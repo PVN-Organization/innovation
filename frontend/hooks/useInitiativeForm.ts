@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useState } from "react";
 
 import { API_BASE } from "@/lib/api/client";
 import { submitInitiative as apiSubmit } from "@/lib/api/initiatives";
@@ -91,23 +91,24 @@ export function useInitiativeForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [authorMode, setAuthorMode] = useState<AuthorMode>("solo");
 
-  // Solo mode: auto-sync first author's donVi & email from form-level fields
-  useEffect(() => {
-    if (authorMode !== "solo") return;
-    setForm((current) => {
-      const first = current.danhSachTacGia[0];
-      if (!first) return current;
-      if (first.donVi === current.donVi && first.email === current.email) {
-        return current;
-      }
-      const next = [...current.danhSachTacGia];
-      next[0] = { ...first, donVi: current.donVi, email: current.email };
-      return { ...current, danhSachTacGia: next };
-    });
-  }, [authorMode, form.donVi, form.email]);
-
   function updateForm(key: keyof FormState, value: string) {
-    setForm((current) => ({ ...current, [key]: value }));
+    setForm((current) => {
+      const nextForm = { ...current, [key]: value };
+      if (authorMode !== "solo" || (key !== "donVi" && key !== "email")) {
+        return nextForm;
+      }
+
+      const first = nextForm.danhSachTacGia[0];
+      if (!first) return nextForm;
+
+      const nextAuthors = [...nextForm.danhSachTacGia];
+      nextAuthors[0] = {
+        ...first,
+        donVi: key === "donVi" ? value : nextForm.donVi,
+        email: key === "email" ? value : nextForm.email,
+      };
+      return { ...nextForm, danhSachTacGia: nextAuthors };
+    });
   }
 
   const updateAuthor = useCallback(
@@ -336,20 +337,65 @@ export function useInitiativeForm({
     onCancel();
   }
 
+  function getAuthorsForEdit(initiative: Initiative): AuthorEntry[] {
+    if (initiative.danhSachTacGia) {
+      try {
+        const parsed = JSON.parse(initiative.danhSachTacGia);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((author, index) => ({
+            vaiTro: String(author.vaiTro || (index === 0 ? "Tác giả" : "Đồng tác giả")),
+            hoTen: String(author.hoTen || ""),
+            chucVu: String(author.chucVu || ""),
+            donVi: String(author.donVi || initiative.donVi || ""),
+            email: String(author.email || ""),
+          }));
+        }
+      } catch {
+        // Fall back to the legacy flat author fields below.
+      }
+    }
+
+    return [
+      {
+        ...emptyAuthor("Tác giả"),
+        hoTen: initiative.tacGia,
+        donVi: initiative.donVi,
+        email: initiative.email ?? "",
+      },
+      ...initiative.dongTacGia
+        .split(";")
+        .map((name) => name.trim())
+        .filter(Boolean)
+        .map((name) => ({
+          ...emptyAuthor("Đồng tác giả"),
+          hoTen: name,
+          donVi: initiative.donVi,
+        })),
+    ];
+  }
+
   function startEdit(initiative: Initiative) {
+    const authors = getAuthorsForEdit(initiative);
     setForm({
       ten: initiative.ten,
       linhVuc: initiative.linhVuc,
-      tacGia: initiative.tacGia,
-      dongTacGia: initiative.dongTacGia,
+      danhSachTacGia: authors,
       donVi: initiative.donVi,
       email: initiative.email ?? "",
-      otp: initiative.otp ?? "",
+      thoiGianTu: "",
+      thoiGianDen: "",
+      lyDo: initiative.lyDo,
+      mucTieu: initiative.mucTieu,
+      thucTrang: initiative.thucTrang,
+      giaiPhap: initiative.giaiPhap,
+      cachThuc: initiative.cachThuc,
       tomTat: initiative.tomTat,
       hieuQua: initiative.hieuQua,
+      tinhMoi: initiative.tinhMoi,
+      nhanRong: initiative.nhanRong,
     });
     setEditingId(initiative.id);
-    setOtpSentTo(initiative.email ?? "");
+    setAuthorMode(authors.length > 1 ? "team" : "solo");
     setFormMessage("Đang chỉnh sửa sáng kiến đã chọn.");
   }
 

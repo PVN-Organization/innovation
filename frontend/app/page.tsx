@@ -88,6 +88,34 @@ const Lock: LucideIcon = (props) => (
 );
 
 const fields: Field[] = ["Công nghệ", "Quy trình", "An toàn", "Môi trường", "Khác"];
+const statuses = ["Tất cả", "Chờ duyệt", "Đã duyệt"];
+const fieldMeta: Record<Field, { color: string; bg: string; image: string }> = {
+  "Công nghệ": {
+    color: "var(--blue-700)",
+    bg: "var(--blue-100)",
+    image: "/visuals/thumb-tech.png",
+  },
+  "Quy trình": {
+    color: "var(--green-600)",
+    bg: "var(--green-100)",
+    image: "/visuals/thumb-process.png",
+  },
+  "An toàn": {
+    color: "var(--gold-500)",
+    bg: "var(--gold-100)",
+    image: "/visuals/thumb-safety.png",
+  },
+  "Môi trường": {
+    color: "var(--green-500)",
+    bg: "var(--green-100)",
+    image: "/visuals/thumb-environment.png",
+  },
+  "Khác": {
+    color: "var(--cyan-500)",
+    bg: "var(--cyan-100)",
+    image: "/visuals/thumb-other.png",
+  },
+};
 const departments = [
   "Ban Kỹ thuật Sản xuất",
   "Ban Chuyển đổi số",
@@ -124,6 +152,7 @@ const innovators = [
 ];
 
 export default function Home() {
+  const { user: authUser } = useAuth();
   const {
     initiatives,
     optimisticLike,
@@ -132,7 +161,8 @@ export default function Home() {
     updateLocal,
   } = useInitiatives();
 
-  const role: Role = authUser?.is_admin ? "admin" : "guest";
+  const [demoRole, setRole] = useState<Role>("guest");
+  const role: Role = authUser?.is_admin ? "admin" : authUser ? "employee" : demoRole;
   const isLoggedIn = !!authUser;
   const [view, setView] = useState<View>("landing");
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -175,15 +205,40 @@ export default function Home() {
     initiatives,
     addLocal,
     updateLocal,
-    refreshInitiatives: refresh,
+    refreshInitiatives,
     onCancel: () => {
       setView("initiatives");
       setInitiativeMode("list");
     },
   });
-
   const isAuthed = role !== "guest";
   const isAdmin = role === "admin";
+
+  function requireAuth() {
+    if (isAuthed) return true;
+    setShowLoginPrompt(true);
+    return false;
+  }
+
+  function go(nextView: View) {
+    if ((nextView === "stats" || nextView === "initiatives") && !isAuthed) {
+      setShowLoginPrompt(true);
+      return;
+    }
+    if (nextView === "admin" && !isAdmin) {
+      setShowLoginPrompt(true);
+      return;
+    }
+    setView(nextView);
+    setChatOpen(false);
+  }
+
+  function startCreate() {
+    if (!requireAuth()) return;
+    clearForm();
+    setView("initiatives");
+    setInitiativeMode("form");
+  }
 
   const departmentCounts = useMemo(() => {
     const counts = initiatives.reduce<Record<string, number>>((acc, item) => {
@@ -389,7 +444,6 @@ export default function Home() {
           items={detailedFiltered}
           form={form}
           formMessage={formMessage}
-          otpSentTo={otpSentTo}
           editingId={editingId}
           selectedDepartment={selectedDepartment}
           selectedField={selectedField}
@@ -397,16 +451,8 @@ export default function Home() {
           searchQuery={searchQuery}
           setSelectedDepartment={setSelectedDepartment}
           setSelectedField={setSelectedField}
-          setPage={setPage}
-          openDetails={openDetails}
-          likeInitiative={likeInitiative}
-        />
-      )}
-
-      {view === "form" && (
-        <InitiativeForm
-          form={form}
-          otpSentTo={otpSentTo}
+          setSelectedStatus={setSelectedStatus}
+          setSearchQuery={setSearchQuery}
           updateForm={updateForm}
           authorMode={authorMode}
           onModeChange={handleModeChange}
@@ -530,6 +576,7 @@ function Navigation({
   logout,
   go,
 }: {
+  role: Role;
   view: View;
   loginAdmin: () => void;
   logout: () => void;
@@ -538,7 +585,7 @@ function Navigation({
   const isAdmin = role === "admin";
   const navItems: { id: View; label: string; visible: boolean }[] = [
     { id: "landing", label: "Trang chủ", visible: true },
-    { id: "form", label: "Đăng ký sáng kiến", visible: true },
+    { id: "initiatives", label: "Đăng ký sáng kiến", visible: true },
     { id: "admin", label: "Quản trị", visible: isAdmin },
   ];
 
@@ -594,9 +641,9 @@ function Navigation({
               </button>
             </div>
           )}
-        </div>
+        </nav>
       </div>
-    </nav>
+    </header>
   );
 }
 
@@ -636,39 +683,29 @@ function LandingPage({
   go: (view: View) => void;
 }) {
   return (
-    <section className="relative min-h-[560px] overflow-hidden bg-[#2E3D8F] text-white">
-      <img
-        src="/hero-innovation.png"
-        alt="Minh họa đội ngũ Petrovietnam trao đổi sáng kiến trên dashboard số"
-        className="absolute inset-0 h-full w-full object-cover opacity-70"
-      />
-      <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(46,61,143,0.97)_0%,rgba(46,61,143,0.82)_48%,rgba(46,61,143,0.32)_100%)]" />
-      <div className="absolute inset-x-0 bottom-0 h-32 bg-[linear-gradient(180deg,transparent,#F5F7FA)]" />
-      <div className="soft-grid absolute inset-0 opacity-20" />
-      <div className="relative mx-auto max-w-7xl px-4 pb-24 pt-20 sm:px-6 lg:pb-28 lg:pt-28">
-        <div className="flex max-w-4xl flex-col justify-center">
-          <h2 className="max-w-3xl text-5xl font-black leading-[0.96] sm:text-7xl">
-            Sáng kiến tạo giá trị mới.
-          </h2>
-          <p className="mt-6 max-w-3xl text-base leading-8 text-white/80 sm:text-lg">
-            Nơi ghi nhận, lan tỏa và phát triển các giải pháp giúp Petrovietnam
-            nâng cao hiệu quả vận hành, bảo đảm an toàn, tối ưu chi phí, thúc
-            đẩy chuyển đổi số và đóng góp thiết thực cho mục tiêu sản xuất kinh
-            doanh bền vững.
-          </p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <button
-              className="rounded-md bg-[#32B34A] px-5 py-3 text-sm font-black text-white shadow-xl shadow-black/20"
-              onClick={() => go("form")}
-            >
-              Gửi sáng kiến mới
-            </button>
-            <button
-              className="rounded-md border border-white/25 bg-white/10 px-5 py-3 text-sm font-black text-white backdrop-blur"
-              onClick={() => go("dashboard")}
-            >
-              Xem bảng xếp hạng
-            </button>
+    <>
+      <section className="relative min-h-[520px] overflow-hidden bg-white text-[var(--navy-900)] sm:min-h-[560px]">
+        <img
+          src="/visuals/hero-green-innovation-flow.png"
+          alt="Dòng chảy sáng kiến xanh số"
+          className="absolute inset-0 h-full w-full object-cover object-center"
+        />
+        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.98)_0%,rgba(255,255,255,0.94)_28%,rgba(255,255,255,0.62)_48%,rgba(255,255,255,0.1)_78%)]" />
+        <div className="absolute inset-x-0 bottom-0 h-24 bg-[linear-gradient(180deg,transparent,var(--mist))]" />
+        <div className="energy-grid absolute inset-0 opacity-55" />
+        <div className="app-container relative z-10 pb-16 pt-12 sm:pb-20 sm:pt-16 lg:pb-24 lg:pt-20">
+          <div className="max-w-[650px]">
+            <h1 className="text-balance text-[2.6rem] font-black leading-[1.05] text-[var(--navy-900)] sm:text-6xl lg:text-[4.45rem]">
+              Cổng thông tin sáng kiến Công đoàn Công ty Mẹ
+            </h1>
+            <p className="mt-5 max-w-xl text-base font-semibold leading-8 text-[var(--navy-800)] sm:text-lg">
+              Đóng góp ý tưởng, tìm cảm hứng với AI, lan tỏa thi đua đổi mới.
+            </p>
+            <div className="mt-7 grid max-w-3xl gap-3 sm:grid-cols-3">
+              <ActionTile icon={PenLine} title="Tạo sáng kiến" description="Đề xuất ý tưởng, giải pháp vì tổ chức và người lao động" locked={!isAuthed} onClick={startCreate} />
+              <ActionTile icon={Bot} title="Hỏi AI" description="Tìm cảm hứng, gợi ý giải pháp phù hợp với nhu cầu của bạn" locked={!isAuthed} onClick={openChat} />
+              <ActionTile icon={BarChart3} title="Xem chi tiết" description="Xem chi tiết sáng kiến, số liệu và báo cáo đầy đủ" locked={!isAuthed} onClick={() => (isAuthed ? go("stats") : showLogin())} />
+            </div>
           </div>
         </div>
       </section>
@@ -831,7 +868,6 @@ function InitiativesPage({
   items,
   form,
   formMessage,
-  otpSentTo,
   editingId,
   selectedDepartment,
   selectedField,
@@ -842,7 +878,11 @@ function InitiativesPage({
   setSelectedStatus,
   setSearchQuery,
   updateForm,
-  sendOtp,
+  authorMode,
+  onModeChange,
+  updateAuthor,
+  addAuthor,
+  removeAuthor,
   submitInitiative,
   exportDocx,
   clearForm,
@@ -858,7 +898,6 @@ function InitiativesPage({
   items: Initiative[];
   form: FormState;
   formMessage: string;
-  otpSentTo: string;
   editingId: number | null;
   selectedDepartment: string;
   selectedField: string;
@@ -869,7 +908,11 @@ function InitiativesPage({
   setSelectedStatus: (value: string) => void;
   setSearchQuery: (value: string) => void;
   updateForm: (key: keyof FormState, value: string) => void;
-  sendOtp: () => void;
+  authorMode: AuthorMode;
+  onModeChange: (mode: AuthorMode) => void;
+  updateAuthor: (index: number, field: keyof AuthorEntry, value: string) => void;
+  addAuthor: () => void;
+  removeAuthor: (index: number) => void;
   submitInitiative: (event: FormEvent<HTMLFormElement>) => void;
   exportDocx: () => void;
   clearForm: () => void;
@@ -903,10 +946,13 @@ function InitiativesPage({
         <InitiativeForm
           form={form}
           formMessage={formMessage}
-          otpSentTo={otpSentTo}
           editingId={editingId}
           updateForm={updateForm}
-          sendOtp={sendOtp}
+          authorMode={authorMode}
+          onModeChange={onModeChange}
+          updateAuthor={updateAuthor}
+          addAuthor={addAuthor}
+          removeAuthor={removeAuthor}
           submitInitiative={submitInitiative}
           exportDocx={exportDocx}
           clearForm={clearForm}
@@ -1305,7 +1351,8 @@ function AdminPortal({
 
 function InitiativeForm({
   form,
-  otpSentTo,
+  formMessage,
+  editingId,
   updateForm,
   authorMode,
   onModeChange,
@@ -1319,7 +1366,8 @@ function InitiativeForm({
   backToList,
 }: {
   form: FormState;
-  otpSentTo: string;
+  formMessage: string;
+  editingId: number | null;
   updateForm: (key: keyof FormState, value: string) => void;
   authorMode: AuthorMode;
   onModeChange: (mode: AuthorMode) => void;
@@ -1332,54 +1380,21 @@ function InitiativeForm({
   showWordPreview: () => void;
   backToList: () => void;
 }) {
-  const [coAuthorDraft, setCoAuthorDraft] = useState("");
-  const coAuthors = form.dongTacGia
-    .split(";")
-    .map((name) => name.trim())
-    .filter(Boolean);
-  const otpReady = Boolean(otpSentTo && otpSentTo === form.email.trim());
-
-  function addCoAuthor() {
-    const nextName = coAuthorDraft.trim();
-    if (!nextName) return;
-    const nextAuthors = [...coAuthors, nextName];
-    updateForm("dongTacGia", nextAuthors.join("; "));
-    setCoAuthorDraft("");
-  }
-
-  function removeCoAuthor(index: number) {
-    const nextAuthors = coAuthors.filter((_, currentIndex) => currentIndex !== index);
-    updateForm("dongTacGia", nextAuthors.join("; "));
-  }
-
   return (
-    <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h2 className="text-4xl font-black leading-tight text-[#2E3D8F]">
-            {editingId ? "Chỉnh sửa sáng kiến" : "Biểu mẫu đăng ký sáng kiến"}
-          </h2>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <span className="rounded-md border border-[#2E3D8F]/15 bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.08em] text-[#2E3D8F]">
-            Chờ duyệt
-          </span>
-        </div>
-      </div>
-
-      <form className="premium-card overflow-hidden rounded-lg bg-white" onSubmit={submitInitiative}>
-        <div className="border-b border-[#2E3D8F]/10 bg-white px-5 py-5 sm:px-7">
+    <section>
+      <form className="card overflow-hidden" onSubmit={submitInitiative}>
+        <div className="border-b border-[var(--line)] bg-white px-5 py-5 sm:px-7">
           <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-            <h3 className="text-xl font-black text-[#2E3D8F]">Thông tin sáng kiến</h3>
-            <span className="text-sm font-bold text-[#667085]">Mã OTP mẫu: {DEMO_OTP}</span>
+            <h3 className="text-xl font-black text-[var(--navy-900)]">Thông tin chung</h3>
+            <StatusBadge status="Chờ duyệt" />
           </div>
         </div>
 
         <div className="grid gap-x-5 gap-y-5 px-5 py-6 sm:px-7 md:grid-cols-2">
           <label className="block md:col-span-2">
-            <span className="text-sm font-black text-[#263451]">Tên sáng kiến</span>
+            <span className="text-sm font-black text-[var(--navy-900)]">Tên sáng kiến</span>
             <input
-              className="mt-2 w-full rounded-md border border-[#2E3D8F]/16 bg-white px-4 py-3 text-base outline-none transition focus:border-[#32B34A] focus:ring-4 focus:ring-[#32B34A]/10"
+              className="mt-2 w-full rounded-md border border-[var(--line)] bg-white px-4 py-3 text-base outline-none transition focus:border-[var(--green-600)] focus:ring-4 focus:ring-[var(--green-100)]"
               value={form.ten}
               onChange={(event) => updateForm("ten", event.target.value)}
               placeholder="Ví dụ: Tối ưu tiêu thụ năng lượng tại văn phòng"
@@ -1387,9 +1402,9 @@ function InitiativeForm({
           </label>
 
           <label className="block">
-            <span className="text-sm font-black text-[#263451]">Lĩnh vực</span>
+            <span className="text-sm font-black text-[var(--navy-900)]">Lĩnh vực</span>
             <select
-              className="mt-2 w-full rounded-md border border-[#2E3D8F]/16 bg-white px-4 py-3 text-base font-bold text-[#243047] outline-none transition focus:border-[#32B34A] focus:ring-4 focus:ring-[#32B34A]/10"
+              className="mt-2 w-full rounded-md border border-[var(--line)] bg-white px-4 py-3 text-base font-bold text-[var(--navy-800)] outline-none transition focus:border-[var(--green-600)] focus:ring-4 focus:ring-[var(--green-100)]"
               value={form.linhVuc}
               onChange={(event) => updateForm("linhVuc", event.target.value)}
             >
@@ -1402,13 +1417,13 @@ function InitiativeForm({
           </label>
 
           <label className="block">
-            <span className="text-sm font-black text-[#263451]">Đơn vị/Phòng ban</span>
+            <span className="text-sm font-black text-[var(--navy-900)]">Đơn vị/Phòng ban</span>
             <select
-              className="mt-2 w-full rounded-md border border-[#2E3D8F]/16 bg-white px-4 py-3 text-base font-bold text-[#243047] outline-none transition focus:border-[#32B34A] focus:ring-4 focus:ring-[#32B34A]/10"
+              className="mt-2 w-full rounded-md border border-[var(--line)] bg-white px-4 py-3 text-base font-bold text-[var(--navy-800)] outline-none transition focus:border-[var(--green-600)] focus:ring-4 focus:ring-[var(--green-100)]"
               value={form.donVi}
               onChange={(event) => updateForm("donVi", event.target.value)}
             >
-              {departments.map((department) => (
+              {DEPARTMENTS.map((department) => (
                 <option key={department} value={department}>
                   {department}
                 </option>
@@ -1417,143 +1432,228 @@ function InitiativeForm({
           </label>
 
           <label className="block">
-            <span className="text-sm font-black text-[#263451]">Tác giả chính</span>
+            <span className="text-sm font-black text-[var(--navy-900)]">Email liên hệ</span>
             <input
-              className="mt-2 w-full rounded-md border border-[#2E3D8F]/16 bg-white px-4 py-3 text-base outline-none transition focus:border-[#32B34A] focus:ring-4 focus:ring-[#32B34A]/10"
-              value={form.tacGia}
-              onChange={(event) => updateForm("tacGia", event.target.value)}
-              placeholder="Nhập họ và tên tác giả chính"
+              className="mt-2 w-full rounded-md border border-[var(--line)] bg-white px-4 py-3 text-base outline-none transition focus:border-[var(--green-600)] focus:ring-4 focus:ring-[var(--green-100)]"
+              value={form.email}
+              onChange={(event) => updateForm("email", event.target.value)}
+              placeholder="name@pvn.vn"
+              type="email"
             />
           </label>
 
-          <div className="block">
-            <span className="text-sm font-black text-[#263451]">Đồng tác giả</span>
-            <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-              <input
-                className="min-w-0 flex-1 rounded-md border border-[#2E3D8F]/16 bg-white px-4 py-3 text-base outline-none transition focus:border-[#32B34A] focus:ring-4 focus:ring-[#32B34A]/10"
-                value={coAuthorDraft}
-                onChange={(event) => setCoAuthorDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    addCoAuthor();
-                  }
-                }}
-                placeholder="Nhập tên rồi bấm Thêm"
-              />
+          <label className="block">
+            <span className="text-sm font-black text-[var(--navy-900)]">Thời gian bắt đầu</span>
+            <input
+              className="mt-2 w-full rounded-md border border-[var(--line)] bg-white px-4 py-3 text-base outline-none transition focus:border-[var(--green-600)] focus:ring-4 focus:ring-[var(--green-100)]"
+              value={form.thoiGianTu}
+              onChange={(event) => updateForm("thoiGianTu", event.target.value)}
+              type="date"
+            />
+          </label>
+
+          <label className="block">
+            <span className="text-sm font-black text-[var(--navy-900)]">Thời gian kết thúc</span>
+            <input
+              className="mt-2 w-full rounded-md border border-[var(--line)] bg-white px-4 py-3 text-base outline-none transition focus:border-[var(--green-600)] focus:ring-4 focus:ring-[var(--green-100)]"
+              value={form.thoiGianDen}
+              onChange={(event) => updateForm("thoiGianDen", event.target.value)}
+              type="date"
+            />
+          </label>
+        </div>
+
+        <div className="border-y border-[var(--line)] bg-[var(--mist)] px-5 py-6 sm:px-7">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="text-xl font-black text-[var(--navy-900)]">Tác giả và đơn vị</h3>
+              <p className="mt-1 text-sm font-semibold text-[var(--muted)]">Chọn cá nhân hoặc nhóm đồng tác giả cho sáng kiến.</p>
+            </div>
+            <div className="inline-grid w-full grid-cols-2 rounded-lg border border-[var(--line)] bg-white p-1 sm:w-auto">
               <button
-                className="shrink-0 rounded-md bg-[#2E3D8F] px-4 py-3 text-sm font-black text-white"
+                className={`rounded-md px-4 py-2 text-sm font-black ${authorMode === "solo" ? "bg-[var(--green-600)] text-white" : "text-[var(--navy-800)]"}`}
                 type="button"
-                onClick={addCoAuthor}
+                onClick={() => onModeChange("solo")}
               >
-                Thêm
+                Cá nhân
+              </button>
+              <button
+                className={`rounded-md px-4 py-2 text-sm font-black ${authorMode === "team" ? "bg-[var(--green-600)] text-white" : "text-[var(--navy-800)]"}`}
+                type="button"
+                onClick={() => onModeChange("team")}
+              >
+                Nhóm
               </button>
             </div>
-            {coAuthors.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {coAuthors.map((name, index) => (
-                  <span
-                    key={`${name}-${index}`}
-                    className="inline-flex max-w-full items-center gap-2 rounded-md border border-[#2E3D8F]/15 bg-[#EEF1FF] px-3 py-2 text-sm font-bold text-[#2E3D8F]"
+          </div>
+
+          <div className="mt-5 grid gap-4">
+            {form.danhSachTacGia.map((author, index) => (
+              <div key={index} className="grid gap-3 rounded-lg border border-[var(--line)] bg-white p-4 md:grid-cols-2">
+                <label className="block">
+                  <span className="text-sm font-black text-[var(--navy-900)]">{index === 0 ? "Tác giả chính" : `Đồng tác giả ${index}`}</span>
+                  <input
+                    className="mt-2 w-full rounded-md border border-[var(--line)] bg-white px-4 py-3 text-base outline-none transition focus:border-[var(--green-600)] focus:ring-4 focus:ring-[var(--green-100)]"
+                    value={author.hoTen}
+                    onChange={(event) => updateAuthor(index, "hoTen", event.target.value)}
+                    placeholder="Nhập họ và tên"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-black text-[var(--navy-900)]">Chức vụ</span>
+                  <input
+                    className="mt-2 w-full rounded-md border border-[var(--line)] bg-white px-4 py-3 text-base outline-none transition focus:border-[var(--green-600)] focus:ring-4 focus:ring-[var(--green-100)]"
+                    value={author.chucVu}
+                    onChange={(event) => updateAuthor(index, "chucVu", event.target.value)}
+                    placeholder="Ví dụ: Chuyên viên"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-black text-[var(--navy-900)]">Đơn vị</span>
+                  <select
+                    className="mt-2 w-full rounded-md border border-[var(--line)] bg-white px-4 py-3 text-base font-bold text-[var(--navy-800)] outline-none transition focus:border-[var(--green-600)] focus:ring-4 focus:ring-[var(--green-100)]"
+                    value={author.donVi}
+                    onChange={(event) => updateAuthor(index, "donVi", event.target.value)}
                   >
-                    <span className="truncate">{name}</span>
-                    <button
-                      className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-white text-xs font-black text-[#2E3D8F]"
-                      type="button"
-                      aria-label={`Xóa đồng tác giả ${name}`}
-                      onClick={() => removeCoAuthor(index)}
-                    >
-                      x
-                    </button>
-                  </span>
-                ))}
+                    <option value="">Chọn đơn vị</option>
+                    {DEPARTMENTS.map((department) => (
+                      <option key={department} value={department}>
+                        {department}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-sm font-black text-[var(--navy-900)]">Email</span>
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      className="min-w-0 flex-1 rounded-md border border-[var(--line)] bg-white px-4 py-3 text-base outline-none transition focus:border-[var(--green-600)] focus:ring-4 focus:ring-[var(--green-100)]"
+                      value={author.email}
+                      onChange={(event) => updateAuthor(index, "email", event.target.value)}
+                      placeholder="name@pvn.vn"
+                      type="email"
+                    />
+                    {authorMode === "team" && index > 0 && (
+                      <button
+                        className="rounded-md border border-[var(--line)] px-3 py-2 text-sm font-black text-[var(--navy-800)]"
+                        type="button"
+                        onClick={() => removeAuthor(index)}
+                      >
+                        Xóa
+                      </button>
+                    )}
+                  </div>
+                </label>
               </div>
+            ))}
+            {authorMode === "team" && (
+              <button
+                className="w-fit rounded-md border border-[var(--green-600)] px-4 py-3 text-sm font-black text-[var(--green-700)]"
+                type="button"
+                onClick={addAuthor}
+              >
+                Thêm đồng tác giả
+              </button>
             )}
           </div>
         </div>
 
-        <div className="border-y border-[#2E3D8F]/10 bg-[#F8FAFC] px-5 py-6 sm:px-7">
-          <h3 className="text-xl font-black text-[#2E3D8F]">Xác thực Email</h3>
-          <div className="mt-4 grid gap-4 md:grid-cols-[1.1fr_0.9fr]">
-            <label className="block">
-              <span className="text-sm font-black text-[#263451]">Email xác thực</span>
-              <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                <input
-                  className="min-w-0 flex-1 rounded-md border border-[#2E3D8F]/16 bg-white px-4 py-3 text-base outline-none transition focus:border-[#32B34A] focus:ring-4 focus:ring-[#32B34A]/10"
-                  value={form.email}
-                  onChange={(event) => updateForm("email", event.target.value)}
-                  placeholder="name@pvn.vn"
-                  type="email"
-                />
-                <button
-                  className="shrink-0 rounded-md bg-[#32B34A] px-4 py-3 text-sm font-black text-white shadow-md shadow-[#32B34A]/20 disabled:opacity-45"
-                  type="button"
-                  onClick={sendOtp}
-                  disabled={!form.email.trim()}
-                >
-                  Gửi OTP
-                </button>
-              </div>
-            </label>
-
-            <label className="block">
-              <span className="text-sm font-black text-[#263451]">Mã OTP Email</span>
-              <input
-                className="mt-2 w-full rounded-md border border-[#2E3D8F]/16 bg-white px-4 py-3 text-base outline-none transition focus:border-[#32B34A] focus:ring-4 focus:ring-[#32B34A]/10"
-                value={form.otp}
-                onChange={(event) => updateForm("otp", event.target.value)}
-                placeholder="Nhập mã OTP trong email"
-                inputMode="numeric"
-              />
-            </label>
-          </div>
-          {otpReady && !editingId && (
-            <p className="mt-4 rounded-md border border-[#32B34A]/25 bg-[#F0FBF2] p-3 text-sm font-bold text-[#237D34]">
-              OTP mô phỏng đã gửi tới {otpSentTo}. Mã dùng thử: {DEMO_OTP}
-            </p>
-          )}
-        </div>
-
         <div className="grid gap-5 px-5 py-6 sm:px-7">
+          <TextArea
+            label="Lý do đề xuất"
+            value={form.lyDo}
+            onChange={(value) => updateForm("lyDo", value)}
+            placeholder="Vấn đề, nhu cầu hoặc cơ hội cải tiến cần được giải quyết..."
+          />
+          <TextArea
+            label="Mục tiêu"
+            value={form.mucTieu}
+            onChange={(value) => updateForm("mucTieu", value)}
+            placeholder="Mục tiêu cụ thể của sáng kiến..."
+          />
+          <TextArea
+            label="Thực trạng"
+            value={form.thucTrang}
+            onChange={(value) => updateForm("thucTrang", value)}
+            placeholder="Mô tả quy trình, dữ liệu hoặc tình huống hiện tại..."
+          />
+          <TextArea
+            label="Giải pháp mới"
+            value={form.giaiPhap}
+            onChange={(value) => updateForm("giaiPhap", value)}
+            placeholder="Nêu giải pháp, điểm mới, công nghệ hoặc cách làm đề xuất..."
+          />
+          <TextArea
+            label="Cách thức áp dụng"
+            value={form.cachThuc}
+            onChange={(value) => updateForm("cachThuc", value)}
+            placeholder="Các bước triển khai, phạm vi áp dụng và đơn vị phối hợp..."
+          />
           <TextArea
             label="Nội dung tóm tắt"
             value={form.tomTat}
             onChange={(value) => updateForm("tomTat", value)}
-            placeholder="Mô tả vấn đề, giải pháp đề xuất và phạm vi áp dụng..."
+            placeholder="Tóm tắt ngắn để hiển thị trên dashboard..."
           />
           <TextArea
             label="Hiệu quả dự kiến"
             value={form.hieuQua}
             onChange={(value) => updateForm("hieuQua", value)}
-            placeholder="Nêu hiệu quả về chi phí, thời gian, an toàn, môi trường hoặc chất lượng phục vụ đoàn viên..."
+            placeholder="Hiệu quả về chi phí, thời gian, an toàn, môi trường hoặc chất lượng phục vụ đoàn viên..."
           />
-          {message && (
-            <p className="rounded-md border border-[#2E3D8F]/12 bg-[#EEF1FF] p-3 text-sm font-bold text-[#2E3D8F]">
-              {message}
+          <TextArea
+            label="Tính mới"
+            value={form.tinhMoi}
+            onChange={(value) => updateForm("tinhMoi", value)}
+            placeholder="Điểm khác biệt so với cách làm hiện tại..."
+          />
+          <TextArea
+            label="Khả năng nhân rộng"
+            value={form.nhanRong}
+            onChange={(value) => updateForm("nhanRong", value)}
+            placeholder="Điều kiện và phạm vi có thể nhân rộng..."
+          />
+          {formMessage && (
+            <p className="rounded-md border border-[var(--green-200)] bg-[var(--green-100)] p-3 text-sm font-bold text-[var(--green-700)]">
+              {formMessage}
             </p>
           )}
         </div>
 
-        <div className="flex flex-col gap-3 border-t border-[#2E3D8F]/10 bg-white px-5 py-5 sm:flex-row sm:justify-end sm:px-7">
+        <div className="sticky bottom-0 flex flex-col gap-3 border-t border-[var(--line)] bg-white/95 px-5 py-5 backdrop-blur sm:flex-row sm:justify-end sm:px-7">
           <button
-            className="rounded-md border border-[#2E3D8F]/15 bg-white px-5 py-3 text-sm font-black text-[#2E3D8F]"
+            className="rounded-md border border-[var(--line)] bg-white px-5 py-3 text-sm font-black text-[var(--navy-800)]"
             type="button"
             onClick={clearForm}
           >
             Hủy
           </button>
           <button
-            className="rounded-md bg-[#2E3D8F] px-5 py-3 text-sm font-black text-white"
+            className="rounded-md border border-[var(--line)] bg-white px-5 py-3 text-sm font-black text-[var(--navy-800)]"
+            type="button"
+            onClick={backToList}
+          >
+            Về danh sách
+          </button>
+          <button
+            className="rounded-md bg-[var(--navy-900)] px-5 py-3 text-sm font-black text-white"
+            type="button"
+            onClick={showWordPreview}
+          >
+            Xem preview bản Word
+          </button>
+          <button
+            className="rounded-md bg-[var(--blue-700)] px-5 py-3 text-sm font-black text-white"
             type="button"
             onClick={exportDocx}
           >
             Xuất File DOCX
           </button>
           <button
-            className="rounded-md bg-[#32B34A] px-5 py-3 text-sm font-black text-white shadow-md shadow-[#32B34A]/20"
+            className="rounded-md bg-[var(--green-600)] px-5 py-3 text-sm font-black text-white shadow-md shadow-[var(--green-600)]/20"
             type="submit"
           >
-            {otpReady && !editingId ? "Xác thực OTP và gửi" : "Gửi Sáng Kiến"}
+            {editingId ? "Cập nhật sáng kiến" : "Gửi Sáng Kiến"}
           </button>
         </div>
       </form>
@@ -1869,17 +1969,21 @@ function WordCloud() {
 
 function DonutChart({ total, fieldCounts, compact = false }: { total: number; fieldCounts: readonly (readonly [Field, number])[]; compact?: boolean }) {
   const colors = fieldCounts.map(([field]) => fieldMeta[field].color);
-  let current = 0;
-  const segments = fieldCounts
-    .map(([, count], index) => {
-      const start = current;
+  const { segments } = fieldCounts.reduce(
+    (acc, [, count], index) => {
+      const start = acc.current;
       const size = total === 0 ? 0 : (count / total) * 100;
-      current += size;
-      return `${colors[index]} ${start}% ${current}%`;
-    })
-    .join(", ");
+      const end = start + size;
+      return {
+        current: end,
+        segments: [...acc.segments, `${colors[index]} ${start}% ${end}%`],
+      };
+    },
+    { current: 0, segments: [] as string[] },
+  );
+  const gradientSegments = segments.join(", ");
   return (
-    <div className={`mx-auto grid ${compact ? "h-40 w-40" : "h-48 w-48"} place-items-center rounded-full`} style={{ background: `conic-gradient(${segments || "var(--line) 0 100%"})` }}>
+    <div className={`mx-auto grid ${compact ? "h-40 w-40" : "h-48 w-48"} place-items-center rounded-full`} style={{ background: `conic-gradient(${gradientSegments || "var(--line) 0 100%"})` }}>
       <div className="grid h-[68%] w-[68%] place-items-center rounded-full bg-white text-center">
         <div>
           <p className="text-3xl font-black">{total}</p>
@@ -2056,6 +2160,11 @@ function LoginPrompt({ close, login }: { close: () => void; login: () => void })
 }
 
 function WordPreview({ form, close, exportDocx }: { form: FormState; close: () => void; exportDocx: () => void }) {
+  const authors = form.danhSachTacGia
+    .map((author) => author.hoTen.trim())
+    .filter(Boolean)
+    .join("; ");
+
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-[var(--navy-950)]/65 p-4">
       <div className="max-h-[92vh] w-full max-w-3xl overflow-auto rounded-xl bg-white shadow-2xl">
@@ -2067,8 +2176,9 @@ function WordPreview({ form, close, exportDocx }: { form: FormState; close: () =
           <p className="text-center text-sm font-black uppercase">Cổng thông tin sáng kiến Công đoàn Công ty Mẹ</p>
           <h4 className="mt-6 text-xl font-black">{form.ten || "Tên sáng kiến chưa nhập"}</h4>
           <p className="mt-2 text-sm text-[var(--muted)]">Lĩnh vực: {form.linhVuc} • Đơn vị: {form.donVi}</p>
-          <p className="mt-1 text-sm text-[var(--muted)]">Tác giả: {form.tacGia || "Chưa nhập"}{form.dongTacGia ? `; ${form.dongTacGia}` : ""}</p>
-          <ContentBlock title="Nội dung tóm tắt" text={form.tomTat || "Chưa nhập"} />
+          <p className="mt-1 text-sm text-[var(--muted)]">Tác giả: {authors || "Chưa nhập"}</p>
+          <ContentBlock title="Lý do đề xuất" text={form.lyDo || "Chưa nhập"} />
+          <div className="mt-5"><ContentBlock title="Giải pháp mới" text={form.giaiPhap || "Chưa nhập"} /></div>
           <div className="mt-5"><ContentBlock title="Hiệu quả dự kiến" text={form.hieuQua || "Chưa nhập"} /></div>
         </div>
         <div className="flex justify-end border-t border-[var(--line)] p-4">
