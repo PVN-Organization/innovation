@@ -153,6 +153,23 @@ export function useInitiativeForm({
     onCancel();
   }
 
+  function startEdit(initiative: Initiative) {
+    setForm({
+      ten: initiative.ten,
+      linhVuc: initiative.linhVuc,
+      tacGia: initiative.tacGia,
+      dongTacGia: initiative.dongTacGia,
+      donVi: initiative.donVi,
+      email: initiative.email ?? "",
+      otp: initiative.otp ?? "",
+      tomTat: initiative.tomTat,
+      hieuQua: initiative.hieuQua,
+    });
+    setEditingId(initiative.id);
+    setOtpSentTo(initiative.email ?? "");
+    setFormMessage("Đang chỉnh sửa sáng kiến đã chọn.");
+  }
+
   function exportDocx() {
     const content = `
       CỔNG THÔNG TIN SÁNG KIẾN CÔNG ĐOÀN BM QL&ĐH PETROVIETNAM
@@ -192,5 +209,6 @@ export function useInitiativeForm({
     handleSubmit,
     clearForm,
     exportDocx,
+    startEdit,
   };
 }
