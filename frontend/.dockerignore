@@ -1,0 +1,16 @@
+node_modules
+.next
+.git
+.gitignore
+*.md
+.env
+.env.*
+dist
+.wrangler
+.vercel
+db
+worker
+examples
+vite.config.ts
+drizzle.config.ts
+wrangler.jsonc
