@@ -1,9 +1,13 @@
 # ───────────────────────────────────────────────────────────────────
 # Stage 1 — Builder: install OS deps + Python deps into a venv
 # ───────────────────────────────────────────────────────────────────
-FROM python:3.11-slim AS builder
+FROM python:3.11-slim-bookworm AS builder
 
-RUN apt-get update \
+# Corporate networks often block outbound HTTP (port 80) but allow HTTPS.
+RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g; s|http://security.debian.org|https://security.debian.org|g' \
+    /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
+    sed -i 's|http://|https://|g' /etc/apt/sources.list \
+    && apt-get update \
     && apt-get install -y --no-install-recommends build-essential libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
@@ -17,9 +21,12 @@ RUN pip install --no-cache-dir --upgrade pip \
 # ───────────────────────────────────────────────────────────────────
 # Stage 2 — Runner: minimal image with only the venv + app source
 # ───────────────────────────────────────────────────────────────────
-FROM python:3.11-slim AS runner
+FROM python:3.11-slim-bookworm AS runner
 
-RUN apt-get update \
+RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g; s|http://security.debian.org|https://security.debian.org|g' \
+    /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
+    sed -i 's|http://|https://|g' /etc/apt/sources.list \
+    && apt-get update \
     && apt-get install -y --no-install-recommends libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
