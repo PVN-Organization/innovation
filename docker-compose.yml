@@ -53,7 +53,7 @@ services:
       AZURE_AD_CLIENT_SECRET: ${AZURE_AD_CLIENT_SECRET:-}
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-["http://localhost:3000"]}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000/sang-kien}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       DEBUG: ${DEBUG:-false}
     ports:
