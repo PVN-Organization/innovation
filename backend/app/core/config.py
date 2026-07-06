@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 
     # ── PostgreSQL (async driver) ─────────────────────────
     POSTGRES_ASYNC_URL: str = (
-        "postgresql+asyncpg://user:password@localhost:5432/innovation_db"
+        "postgresql+psycopg://user:password@localhost:5432/innovation_db"
     )
 
     # ── MinIO / S3 Object Storage ─────────────────────────
