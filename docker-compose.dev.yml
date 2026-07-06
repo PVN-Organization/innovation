@@ -1,0 +1,12 @@
+# Local dev: expose postgres/minio ports for debugging (pgAdmin, MinIO console).
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+services:
+  postgres:
+    ports:
+      - "${PG_HOST_PORT:-5433}:5432"
+
+  minio:
+    ports:
+      - "${MINIO_API_HOST_PORT:-9010}:9000"
+      - "${MINIO_CONSOLE_HOST_PORT:-9011}:9001"

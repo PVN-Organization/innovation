@@ -13,8 +13,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-innovation_db}
     volumes:
       - pgdata:/var/lib/postgresql/data
-    ports:
-      - "${PG_HOST_PORT:-5433}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-innovation} -d $${POSTGRES_DB:-innovation_db}"]
       interval: 10s
@@ -31,9 +29,6 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
     volumes:
       - miniodata:/data
-    ports:
-      - "${MINIO_API_HOST_PORT:-9010}:9000"
-      - "${MINIO_CONSOLE_HOST_PORT:-9011}:9001"
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
       interval: 30s
