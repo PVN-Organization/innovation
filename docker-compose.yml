@@ -48,8 +48,12 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
       MINIO_BUCKET_NAME: ${MINIO_BUCKET_NAME:-innovations}
+      AZURE_AD_CLIENT_ID: ${AZURE_AD_CLIENT_ID:-}
+      AZURE_AD_TENANT_ID: ${AZURE_AD_TENANT_ID:-}
+      AZURE_AD_CLIENT_SECRET: ${AZURE_AD_CLIENT_SECRET:-}
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       BACKEND_CORS_ORIGINS: '["http://localhost:3000"]'
+      FRONTEND_URL: "http://localhost:3000"
       DEBUG: ${DEBUG:-false}
     ports:
       - "8000:8000"

@@ -1,5 +1,7 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+export { API_BASE };
+
 export class ApiError extends Error {
   status: number;
 
@@ -35,7 +37,7 @@ export async function get<T>(
       if (value !== undefined && value !== "") url.searchParams.set(key, value);
     }
   }
-  const response = await fetch(url.toString());
+  const response = await fetch(url.toString(), { credentials: "include" });
   return handleResponse<T>(response);
 }
 
@@ -44,6 +46,7 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    credentials: "include",
   });
   return handleResponse<T>(response);
 }
@@ -52,6 +55,7 @@ export async function postForm<T>(path: string, formData: FormData): Promise<T> 
   const response = await fetch(`${API_BASE}${path}`, {
     method: "POST",
     body: formData,
+    credentials: "include",
   });
   return handleResponse<T>(response);
 }

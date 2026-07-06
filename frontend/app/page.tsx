@@ -2,44 +2,39 @@
 
 import { FormEvent, useMemo, useState } from "react";
 
-import { DEMO_OTP, useInitiativeForm } from "@/hooks/useInitiativeForm";
+import { useAuth } from "@/hooks/useAuth";
+import { useInitiativeForm, DEPARTMENTS } from "@/hooks/useInitiativeForm";
+import type { AuthorMode } from "@/hooks/useInitiativeForm";
 import { useInitiatives } from "@/hooks/useInitiatives";
-import type { Field, FormState, Initiative, Status } from "@/lib/types";
+import type { AuthorEntry, Field, FormState, Initiative, Status } from "@/lib/types";
 
 type Role = "guest" | "admin";
 type View = "landing" | "dashboard" | "form" | "admin";
 
 const fields: Field[] = ["Công nghệ", "Quy trình", "An toàn", "Môi trường", "Khác"];
-const departments = [
-  "Ban Kỹ thuật Sản xuất",
-  "Ban Chuyển đổi số",
-  "Ban Quản trị nguồn nhân lực",
-  "Ban Tài chính Kế toán",
-  "Ban Pháp chế",
-  "Ban An toàn Sức khỏe Môi trường",
-  "Văn phòng Công đoàn",
-  "Ban Truyền thông và Văn hóa Doanh nghiệp",
-];
+const departments = DEPARTMENTS;
 
 const innovators = [
   {
     ten: "Nguyễn Minh Anh",
-    donVi: "Ban Kỹ thuật Sản xuất",
+    donVi: "Ban Thăm dò - Khai thác Dầu khí",
     quote: "Sáng kiến tốt bắt đầu từ một bất tiện nhỏ được nhìn đủ kỹ.",
   },
   {
     ten: "Trần Hải Yến",
-    donVi: "Ban Chuyển đổi số",
+    donVi: "Ban Khoa học Công nghệ & Chuyển đổi số",
     quote: "Dữ liệu không thay con người, dữ liệu giúp chúng ta quyết định tự tin hơn.",
   },
   {
     ten: "Lê Thu Hương",
-    donVi: "Văn phòng Công đoàn",
+    donVi: "Văn phòng Tập đoàn",
     quote: "Đổi mới trong công đoàn là làm cho việc tốt trở nên dễ lặp lại.",
   },
 ];
 
 export default function Home() {
+  const { user: authUser, loading: authLoading, login, logout } = useAuth();
+
   const {
     initiatives,
     optimisticLike,
@@ -48,7 +43,8 @@ export default function Home() {
     updateLocal,
   } = useInitiatives();
 
-  const [role, setRole] = useState<Role>("guest");
+  const role: Role = authUser?.is_admin ? "admin" : "guest";
+  const isLoggedIn = !!authUser;
   const [view, setView] = useState<View>("landing");
   const [selectedDepartment, setSelectedDepartment] = useState("Tất cả");
   const [selectedField, setSelectedField] = useState("Tất cả");
@@ -69,10 +65,13 @@ export default function Home() {
   const {
     form,
     formMessage,
-    otpSentTo,
     editingId,
+    authorMode,
     updateForm,
-    sendOtp,
+    handleModeChange,
+    updateAuthor,
+    addAuthor,
+    removeAuthor,
     handleSubmit: submitInitiative,
     clearForm,
     exportDocx,
@@ -143,14 +142,8 @@ export default function Home() {
   const maxDepartment = Math.max(...departmentCounts.map(([, count]) => count), 1);
   const maxField = Math.max(...fieldCounts.map(([, count]) => count), 1);
 
-  function loginAdmin() {
-    setRole("admin");
-    setView("admin");
-    setChatOpen(false);
-  }
-
-  function logout() {
-    setRole("guest");
+  function handleLogout() {
+    logout();
     setView("landing");
     setSelectedInitiative(null);
     setChatOpen(false);
@@ -233,7 +226,15 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#F5F7FA] text-[#172033]">
-      <Navigation role={role} view={view} loginAdmin={loginAdmin} logout={logout} go={go} />
+      <Navigation
+        view={view}
+        go={go}
+        isLoggedIn={isLoggedIn}
+        canAdmin={canAdmin}
+        userName={authUser?.name || authUser?.email || ""}
+        onLogin={login}
+        onLogout={handleLogout}
+      />
 
       {view === "landing" && (
         <>
@@ -274,9 +275,12 @@ export default function Home() {
       {view === "form" && (
         <InitiativeForm
           form={form}
-          otpSentTo={otpSentTo}
           updateForm={updateForm}
-          sendOtp={sendOtp}
+          authorMode={authorMode}
+          onModeChange={handleModeChange}
+          updateAuthor={updateAuthor}
+          addAuthor={addAuthor}
+          removeAuthor={removeAuthor}
           submitInitiative={submitInitiative}
           exportDocx={exportDocx}
           clearForm={clearForm}
@@ -325,23 +329,26 @@ export default function Home() {
 }
 
 function Navigation({
-  role,
   view,
-  loginAdmin,
-  logout,
   go,
+  isLoggedIn,
+  canAdmin,
+  userName,
+  onLogin,
+  onLogout,
 }: {
-  role: Role;
   view: View;
-  loginAdmin: () => void;
-  logout: () => void;
   go: (view: View) => void;
+  isLoggedIn: boolean;
+  canAdmin: boolean;
+  userName: string;
+  onLogin: () => void;
+  onLogout: () => void;
 }) {
-  const isAdmin = role === "admin";
   const navItems: { id: View; label: string; visible: boolean }[] = [
     { id: "landing", label: "Trang chủ", visible: true },
     { id: "form", label: "Đăng ký sáng kiến", visible: true },
-    { id: "admin", label: "Quản trị", visible: isAdmin },
+    { id: "admin", label: "Quản trị", visible: canAdmin },
   ];
 
   return (
@@ -381,22 +388,27 @@ function Navigation({
                 {item.label}
               </button>
             ))}
-          {!isAdmin ? (
+          {!isLoggedIn ? (
             <button
               className="rounded-md bg-[#32B34A] px-4 py-2 text-sm font-black text-white shadow-md shadow-[#32B34A]/20"
-              onClick={loginAdmin}
-              title="Đăng nhập quản trị bằng Azure AD"
+              onClick={onLogin}
+              title="Đăng nhập bằng Azure AD"
             >
               Đăng nhập
             </button>
           ) : (
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-md bg-white px-3 py-2 text-sm font-bold text-[#485466]">
-                Quản trị viên
+                {userName}
               </span>
+              {canAdmin && (
+                <span className="rounded-md bg-[#2E3D8F]/10 px-2 py-1 text-xs font-bold text-[#2E3D8F]">
+                  Admin
+                </span>
+              )}
               <button
                 className="rounded-md border border-[#2E3D8F]/15 bg-white px-3 py-2 text-sm font-black text-[#2E3D8F]"
-                onClick={logout}
+                onClick={onLogout}
               >
                 Đăng xuất
               </button>
@@ -422,7 +434,7 @@ function Hero({ go }: { go: (view: View) => void }) {
       <div className="relative mx-auto max-w-7xl px-4 pb-24 pt-20 sm:px-6 lg:pb-28 lg:pt-28">
         <div className="flex max-w-4xl flex-col justify-center">
           <h2 className="max-w-3xl text-5xl font-black leading-[0.96] sm:text-7xl">
-            Sáng kiến tạo giá trị mới.
+            KIẾN TẠO GIÁ TRỊ MỚI.
           </h2>
           <p className="mt-6 max-w-3xl text-base leading-8 text-white/80 sm:text-lg">
             Nơi ghi nhận, lan tỏa và phát triển các giải pháp giúp Petrovietnam
@@ -682,9 +694,12 @@ function DetailedDashboard({
 
 function InitiativeForm({
   form,
-  otpSentTo,
   updateForm,
-  sendOtp,
+  authorMode,
+  onModeChange,
+  updateAuthor,
+  addAuthor,
+  removeAuthor,
   submitInitiative,
   exportDocx,
   clearForm,
@@ -692,34 +707,24 @@ function InitiativeForm({
   editingId,
 }: {
   form: FormState;
-  otpSentTo: string;
   updateForm: (key: keyof FormState, value: string) => void;
-  sendOtp: () => void;
+  authorMode: AuthorMode;
+  onModeChange: (mode: AuthorMode) => void;
+  updateAuthor: (index: number, field: keyof AuthorEntry, value: string) => void;
+  addAuthor: () => void;
+  removeAuthor: (index: number) => void;
   submitInitiative: (event: FormEvent<HTMLFormElement>) => void;
   exportDocx: () => void;
   clearForm: () => void;
   message: string;
   editingId: number | null;
 }) {
-  const [coAuthorDraft, setCoAuthorDraft] = useState("");
-  const coAuthors = form.dongTacGia
-    .split(";")
-    .map((name) => name.trim())
-    .filter(Boolean);
-  const otpReady = Boolean(otpSentTo && otpSentTo === form.email.trim());
-
-  function addCoAuthor() {
-    const nextName = coAuthorDraft.trim();
-    if (!nextName) return;
-    const nextAuthors = [...coAuthors, nextName];
-    updateForm("dongTacGia", nextAuthors.join("; "));
-    setCoAuthorDraft("");
-  }
-
-  function removeCoAuthor(index: number) {
-    const nextAuthors = coAuthors.filter((_, currentIndex) => currentIndex !== index);
-    updateForm("dongTacGia", nextAuthors.join("; "));
-  }
+  const inputClass =
+    "mt-1 w-full rounded-md border border-[#2E3D8F]/16 bg-white px-4 py-3 text-base outline-none transition focus:border-[#32B34A] focus:ring-4 focus:ring-[#32B34A]/10";
+  const smallInputClass =
+    "mt-1 w-full rounded-md border border-[#2E3D8F]/16 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-[#32B34A] focus:ring-4 focus:ring-[#32B34A]/10";
+  const selectClass =
+    "mt-1 w-full rounded-md border border-[#2E3D8F]/16 bg-white px-4 py-3 text-base font-bold text-[#243047] outline-none transition focus:border-[#32B34A] focus:ring-4 focus:ring-[#32B34A]/10";
 
   return (
     <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
@@ -737,18 +742,16 @@ function InitiativeForm({
       </div>
 
       <form className="premium-card overflow-hidden rounded-lg bg-white" onSubmit={submitInitiative}>
+        {/* ── I. THÔNG TIN CHUNG ───────────────────────────────── */}
         <div className="border-b border-[#2E3D8F]/10 bg-white px-5 py-5 sm:px-7">
-          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-            <h3 className="text-xl font-black text-[#2E3D8F]">Thông tin sáng kiến</h3>
-            <span className="text-sm font-bold text-[#667085]">Mã OTP mẫu: {DEMO_OTP}</span>
-          </div>
+          <h3 className="text-xl font-black text-[#2E3D8F]">I. Thông tin chung</h3>
         </div>
 
         <div className="grid gap-x-5 gap-y-5 px-5 py-6 sm:px-7 md:grid-cols-2">
           <label className="block md:col-span-2">
-            <span className="text-sm font-black text-[#263451]">Tên sáng kiến</span>
+            <span className="text-sm font-black text-[#263451]">Tên sáng kiến <span className="text-red-500">*</span></span>
             <input
-              className="mt-2 w-full rounded-md border border-[#2E3D8F]/16 bg-white px-4 py-3 text-base outline-none transition focus:border-[#32B34A] focus:ring-4 focus:ring-[#32B34A]/10"
+              className={inputClass}
               value={form.ten}
               onChange={(event) => updateForm("ten", event.target.value)}
               placeholder="Ví dụ: Tối ưu tiêu thụ năng lượng tại văn phòng"
@@ -756,9 +759,9 @@ function InitiativeForm({
           </label>
 
           <label className="block">
-            <span className="text-sm font-black text-[#263451]">Lĩnh vực</span>
+            <span className="text-sm font-black text-[#263451]">Lĩnh vực <span className="text-red-500">*</span></span>
             <select
-              className="mt-2 w-full rounded-md border border-[#2E3D8F]/16 bg-white px-4 py-3 text-base font-bold text-[#243047] outline-none transition focus:border-[#32B34A] focus:ring-4 focus:ring-[#32B34A]/10"
+              className={selectClass}
               value={form.linhVuc}
               onChange={(event) => updateForm("linhVuc", event.target.value)}
             >
@@ -771,9 +774,9 @@ function InitiativeForm({
           </label>
 
           <label className="block">
-            <span className="text-sm font-black text-[#263451]">Đơn vị/Phòng ban</span>
+            <span className="text-sm font-black text-[#263451]">Ban <span className="text-red-500">*</span></span>
             <select
-              className="mt-2 w-full rounded-md border border-[#2E3D8F]/16 bg-white px-4 py-3 text-base font-bold text-[#243047] outline-none transition focus:border-[#32B34A] focus:ring-4 focus:ring-[#32B34A]/10"
+              className={selectClass}
               value={form.donVi}
               onChange={(event) => updateForm("donVi", event.target.value)}
             >
@@ -786,115 +789,231 @@ function InitiativeForm({
           </label>
 
           <label className="block">
-            <span className="text-sm font-black text-[#263451]">Tác giả chính</span>
+            <span className="text-sm font-black text-[#263451]">Email liên hệ <span className="text-red-500">*</span></span>
             <input
-              className="mt-2 w-full rounded-md border border-[#2E3D8F]/16 bg-white px-4 py-3 text-base outline-none transition focus:border-[#32B34A] focus:ring-4 focus:ring-[#32B34A]/10"
-              value={form.tacGia}
-              onChange={(event) => updateForm("tacGia", event.target.value)}
-              placeholder="Nhập họ và tên tác giả chính"
+              className={inputClass}
+              value={form.email}
+              onChange={(event) => updateForm("email", event.target.value)}
+              placeholder="name@pvn.vn"
+              type="email"
             />
           </label>
 
-          <div className="block">
-            <span className="text-sm font-black text-[#263451]">Đồng tác giả</span>
-            <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-              <input
-                className="min-w-0 flex-1 rounded-md border border-[#2E3D8F]/16 bg-white px-4 py-3 text-base outline-none transition focus:border-[#32B34A] focus:ring-4 focus:ring-[#32B34A]/10"
-                value={coAuthorDraft}
-                onChange={(event) => setCoAuthorDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    addCoAuthor();
-                  }
-                }}
-                placeholder="Nhập tên rồi bấm Thêm"
-              />
+          <div className="block md:col-span-2">
+            <span className="text-sm font-black text-[#263451]">Thời gian nghiên cứu, áp dụng thử</span>
+            <div className="mt-1 grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-xs text-[#667085]">Từ</span>
+                <input
+                  className={inputClass}
+                  type="date"
+                  value={form.thoiGianTu}
+                  onChange={(event) => updateForm("thoiGianTu", event.target.value)}
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs text-[#667085]">Đến</span>
+                <input
+                  className={inputClass}
+                  type="date"
+                  value={form.thoiGianDen}
+                  onChange={(event) => updateForm("thoiGianDen", event.target.value)}
+                />
+              </label>
+            </div>
+          </div>
+        </div>
+
+        {/* ── TÁC GIẢ ──────────────────────────────────────────── */}
+        <div className="border-y border-[#2E3D8F]/10 px-5 py-6 sm:px-7">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h3 className="text-lg font-black text-[#2E3D8F]">
+              Tác giả sáng kiến <span className="text-red-500">*</span>
+            </h3>
+            <div className="inline-flex rounded-lg border border-[#2E3D8F]/15 bg-[#F8FAFC] p-1">
               <button
-                className="shrink-0 rounded-md bg-[#2E3D8F] px-4 py-3 text-sm font-black text-white"
                 type="button"
-                onClick={addCoAuthor}
+                className={`rounded-md px-4 py-2 text-sm font-bold transition ${
+                  authorMode === "solo"
+                    ? "bg-[#2E3D8F] text-white shadow-sm"
+                    : "text-[#667085] hover:text-[#2E3D8F]"
+                }`}
+                onClick={() => onModeChange("solo")}
               >
-                Thêm
+                Tác giả duy nhất
+              </button>
+              <button
+                type="button"
+                className={`rounded-md px-4 py-2 text-sm font-bold transition ${
+                  authorMode === "team"
+                    ? "bg-[#2E3D8F] text-white shadow-sm"
+                    : "text-[#667085] hover:text-[#2E3D8F]"
+                }`}
+                onClick={() => onModeChange("team")}
+              >
+                Đồng tác giả
               </button>
             </div>
-            {coAuthors.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {coAuthors.map((name, index) => (
-                  <span
-                    key={`${name}-${index}`}
-                    className="inline-flex max-w-full items-center gap-2 rounded-md border border-[#2E3D8F]/15 bg-[#EEF1FF] px-3 py-2 text-sm font-bold text-[#2E3D8F]"
+          </div>
+
+          <div className="space-y-4">
+            {form.danhSachTacGia.map((author, index) => (
+              <div
+                key={index}
+                className="relative rounded-lg border border-[#2E3D8F]/10 bg-[#F8FAFC] p-4"
+              >
+                {authorMode === "team" && index > 0 && (
+                  <button
+                    type="button"
+                    className="absolute right-3 top-3 grid h-6 w-6 place-items-center rounded-full border border-red-200 bg-white text-xs font-black text-red-500 transition hover:bg-red-50"
+                    aria-label={`Xóa tác giả #${index + 1}`}
+                    onClick={() => removeAuthor(index)}
                   >
-                    <span className="truncate">{name}</span>
-                    <button
-                      className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-white text-xs font-black text-[#2E3D8F]"
-                      type="button"
-                      aria-label={`Xóa đồng tác giả ${name}`}
-                      onClick={() => removeCoAuthor(index)}
-                    >
-                      x
-                    </button>
-                  </span>
-                ))}
+                    x
+                  </button>
+                )}
+                <div className="mb-2 text-xs font-bold uppercase tracking-wider text-[#667085]">
+                  {author.vaiTro}
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <label className="block">
+                    <span className="text-xs font-bold text-[#263451]">Họ và tên <span className="text-red-500">*</span></span>
+                    <input
+                      className={smallInputClass}
+                      value={author.hoTen}
+                      onChange={(e) => updateAuthor(index, "hoTen", e.target.value)}
+                      placeholder="Nguyễn Văn A"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-bold text-[#263451]">Chức vụ</span>
+                    <input
+                      className={smallInputClass}
+                      value={author.chucVu}
+                      onChange={(e) => updateAuthor(index, "chucVu", e.target.value)}
+                      placeholder="Chuyên viên"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-bold text-[#263451]">Đơn vị công tác</span>
+                    <input
+                      className={`${smallInputClass} ${authorMode === "solo" && index === 0 ? "bg-gray-50 text-gray-500" : ""}`}
+                      value={author.donVi}
+                      onChange={(e) => updateAuthor(index, "donVi", e.target.value)}
+                      readOnly={authorMode === "solo" && index === 0}
+                      tabIndex={authorMode === "solo" && index === 0 ? -1 : undefined}
+                      placeholder="Ban Kỹ thuật"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-bold text-[#263451]">Điện thoại/Email</span>
+                    <input
+                      className={`${smallInputClass} ${authorMode === "solo" && index === 0 ? "bg-gray-50 text-gray-500" : ""}`}
+                      value={author.email}
+                      onChange={(e) => updateAuthor(index, "email", e.target.value)}
+                      readOnly={authorMode === "solo" && index === 0}
+                      tabIndex={authorMode === "solo" && index === 0 ? -1 : undefined}
+                      placeholder="0912... / email@pvn.vn"
+                    />
+                  </label>
+                </div>
               </div>
+            ))}
+
+            {authorMode === "team" && (
+              <button
+                type="button"
+                className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-[#2E3D8F]/20 py-3 text-sm font-bold text-[#2E3D8F] transition hover:border-[#2E3D8F]/40 hover:bg-[#EEF1FF]/50"
+                onClick={addAuthor}
+              >
+                <span className="text-lg leading-none">+</span> Thêm tác giả
+              </button>
             )}
           </div>
         </div>
 
+        {/* ── II-III. LÝ DO & MỤC TIÊU ────────────────────────── */}
         <div className="border-y border-[#2E3D8F]/10 bg-[#F8FAFC] px-5 py-6 sm:px-7">
-          <h3 className="text-xl font-black text-[#2E3D8F]">Xác thực Email</h3>
-          <div className="mt-4 grid gap-4 md:grid-cols-[1.1fr_0.9fr]">
-            <label className="block">
-              <span className="text-sm font-black text-[#263451]">Email xác thực</span>
-              <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                <input
-                  className="min-w-0 flex-1 rounded-md border border-[#2E3D8F]/16 bg-white px-4 py-3 text-base outline-none transition focus:border-[#32B34A] focus:ring-4 focus:ring-[#32B34A]/10"
-                  value={form.email}
-                  onChange={(event) => updateForm("email", event.target.value)}
-                  placeholder="name@pvn.vn"
-                  type="email"
-                />
-                <button
-                  className="shrink-0 rounded-md bg-[#32B34A] px-4 py-3 text-sm font-black text-white shadow-md shadow-[#32B34A]/20 disabled:opacity-45"
-                  type="button"
-                  onClick={sendOtp}
-                  disabled={!form.email.trim()}
-                >
-                  Gửi OTP
-                </button>
-              </div>
-            </label>
-
-            <label className="block">
-              <span className="text-sm font-black text-[#263451]">Mã OTP Email</span>
-              <input
-                className="mt-2 w-full rounded-md border border-[#2E3D8F]/16 bg-white px-4 py-3 text-base outline-none transition focus:border-[#32B34A] focus:ring-4 focus:ring-[#32B34A]/10"
-                value={form.otp}
-                onChange={(event) => updateForm("otp", event.target.value)}
-                placeholder="Nhập mã OTP trong email"
-                inputMode="numeric"
-              />
-            </label>
+          <h3 className="mb-4 text-xl font-black text-[#2E3D8F]">II. Lý do đề xuất & Mục tiêu</h3>
+          <div className="grid gap-5">
+            <TextArea
+              label="Lý do đề xuất sáng kiến"
+              required
+              value={form.lyDo}
+              onChange={(value) => updateForm("lyDo", value)}
+              placeholder="Trình bày lý do, bối cảnh dẫn đến việc đề xuất sáng kiến..."
+            />
+            <TextArea
+              label="Mục tiêu của sáng kiến"
+              required
+              value={form.mucTieu}
+              onChange={(value) => updateForm("mucTieu", value)}
+              placeholder="Nêu rõ mục tiêu mà sáng kiến hướng tới giải quyết..."
+            />
           </div>
-          {otpReady && !editingId && (
-            <p className="mt-4 rounded-md border border-[#32B34A]/25 bg-[#F0FBF2] p-3 text-sm font-bold text-[#237D34]">
-              OTP mô phỏng đã gửi tới {otpSentTo}. Mã dùng thử: {DEMO_OTP}
-            </p>
-          )}
         </div>
 
+        {/* ── IV. NỘI DUNG SÁNG KIẾN ──────────────────────────── */}
+        <div className="border-b border-[#2E3D8F]/10 px-5 py-6 sm:px-7">
+          <h3 className="mb-4 text-xl font-black text-[#2E3D8F]">IV. Nội dung sáng kiến</h3>
+          <div className="grid gap-5">
+            <TextArea
+              label="1. Thực trạng trước khi áp dụng sáng kiến"
+              required
+              value={form.thucTrang}
+              onChange={(value) => updateForm("thucTrang", value)}
+              placeholder="Mô tả thực trạng, vấn đề thực tế cần giải quyết..."
+            />
+            <TextArea
+              label="2. Giải pháp mới được đề xuất"
+              required
+              value={form.giaiPhap}
+              onChange={(value) => updateForm("giaiPhap", value)}
+              placeholder="Trình bày chi tiết giải pháp, phương pháp mới..."
+            />
+            <TextArea
+              label="3. Cách thức áp dụng"
+              required
+              value={form.cachThuc}
+              onChange={(value) => updateForm("cachThuc", value)}
+              placeholder="Mô tả quy trình, các bước triển khai áp dụng sáng kiến..."
+            />
+          </div>
+        </div>
+
+        {/* ── V-VII. HIỆU QUẢ & ĐÁNH GIÁ ─────────────────────── */}
+        <div className="border-b border-[#2E3D8F]/10 bg-[#F8FAFC] px-5 py-6 sm:px-7">
+          <h3 className="mb-4 text-xl font-black text-[#2E3D8F]">V. Hiệu quả & Đánh giá</h3>
+          <div className="grid gap-5">
+            <TextArea
+              label="Hiệu quả đạt được"
+              required
+              value={form.hieuQua}
+              onChange={(value) => updateForm("hieuQua", value)}
+              placeholder="Nêu hiệu quả về chi phí, thời gian, an toàn, môi trường hoặc chất lượng..."
+            />
+            <TextArea
+              label="Tính mới của sáng kiến"
+              value={form.tinhMoi}
+              onChange={(value) => updateForm("tinhMoi", value)}
+              placeholder="Nêu điểm mới, sáng tạo so với giải pháp hiện có (nếu có)..."
+            />
+            <TextArea
+              label="Khả năng áp dụng và nhân rộng"
+              value={form.nhanRong}
+              onChange={(value) => updateForm("nhanRong", value)}
+              placeholder="Đánh giá khả năng triển khai rộng rãi tại các đơn vị khác (nếu có)..."
+            />
+          </div>
+        </div>
+
+        {/* ── Tóm tắt ─────────────────────────────────────────── */}
         <div className="grid gap-5 px-5 py-6 sm:px-7">
           <TextArea
             label="Nội dung tóm tắt"
             value={form.tomTat}
             onChange={(value) => updateForm("tomTat", value)}
-            placeholder="Mô tả vấn đề, giải pháp đề xuất và phạm vi áp dụng..."
-          />
-          <TextArea
-            label="Hiệu quả dự kiến"
-            value={form.hieuQua}
-            onChange={(value) => updateForm("hieuQua", value)}
-            placeholder="Nêu hiệu quả về chi phí, thời gian, an toàn, môi trường hoặc chất lượng phục vụ đoàn viên..."
+            placeholder="Mô tả ngắn gọn toàn bộ sáng kiến (hiển thị trên danh sách công khai)..."
           />
           {message && (
             <p className="rounded-md border border-[#2E3D8F]/12 bg-[#EEF1FF] p-3 text-sm font-bold text-[#2E3D8F]">
@@ -922,7 +1041,7 @@ function InitiativeForm({
             className="rounded-md bg-[#32B34A] px-5 py-3 text-sm font-black text-white shadow-md shadow-[#32B34A]/20"
             type="submit"
           >
-            {otpReady && !editingId ? "Xác thực OTP và gửi" : "Gửi Sáng Kiến"}
+            Gửi Sáng Kiến
           </button>
         </div>
       </form>
@@ -1303,15 +1422,20 @@ function TextArea({
   value,
   onChange,
   placeholder,
+  required,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
+  required?: boolean;
 }) {
   return (
-    <label className="mt-4 block">
-      <span className="text-sm font-black">{label}</span>
+    <label className="block">
+      <span className="text-sm font-black">
+        {label}
+        {required && <span className="text-red-500"> *</span>}
+      </span>
       <textarea
         className="mt-2 min-h-32 w-full resize-y rounded-md border border-black/10 bg-white px-3 py-3 text-sm leading-6 outline-none focus:border-[#2E3D8F]"
         value={value}

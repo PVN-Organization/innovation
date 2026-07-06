@@ -8,6 +8,18 @@ import {
 } from "@/lib/api/initiatives";
 import type { Initiative } from "@/lib/types";
 
+const SEED_EXTRA = {
+  thoiGian: "",
+  lyDo: "",
+  mucTieu: "",
+  thucTrang: "",
+  giaiPhap: "",
+  cachThuc: "",
+  tinhMoi: "",
+  nhanRong: "",
+  danhSachTacGia: "",
+};
+
 const seedInitiatives: Initiative[] = [
   {
     id: 1,
@@ -25,6 +37,7 @@ const seedInitiatives: Initiative[] = [
     diem: 120,
     giaiThuong: "Giải Nhất",
     ngayNop: "12/06/2026",
+    ...SEED_EXTRA,
   },
   {
     id: 2,
@@ -42,6 +55,7 @@ const seedInitiatives: Initiative[] = [
     diem: 96,
     giaiThuong: "Sáng kiến tiêu biểu",
     ngayNop: "18/06/2026",
+    ...SEED_EXTRA,
   },
   {
     id: 3,
@@ -59,6 +73,7 @@ const seedInitiatives: Initiative[] = [
     diem: 10,
     giaiThuong: "Chờ xét chọn",
     ngayNop: "21/06/2026",
+    ...SEED_EXTRA,
   },
   {
     id: 4,
@@ -76,6 +91,7 @@ const seedInitiatives: Initiative[] = [
     diem: 84,
     giaiThuong: "Giải Nhì",
     ngayNop: "25/06/2026",
+    ...SEED_EXTRA,
   },
   {
     id: 5,
@@ -93,6 +109,7 @@ const seedInitiatives: Initiative[] = [
     diem: 10,
     giaiThuong: "Chờ xét chọn",
     ngayNop: "28/06/2026",
+    ...SEED_EXTRA,
   },
   {
     id: 6,
@@ -110,6 +127,7 @@ const seedInitiatives: Initiative[] = [
     diem: 72,
     giaiThuong: "Sáng kiến tiêu biểu",
     ngayNop: "02/07/2026",
+    ...SEED_EXTRA,
   },
   {
     id: 7,
@@ -127,6 +145,7 @@ const seedInitiatives: Initiative[] = [
     diem: 68,
     giaiThuong: "Giải Ba",
     ngayNop: "03/07/2026",
+    ...SEED_EXTRA,
   },
   {
     id: 8,
@@ -144,6 +163,7 @@ const seedInitiatives: Initiative[] = [
     diem: 10,
     giaiThuong: "Chờ xét chọn",
     ngayNop: "04/07/2026",
+    ...SEED_EXTRA,
   },
   {
     id: 9,
@@ -161,6 +181,7 @@ const seedInitiatives: Initiative[] = [
     diem: 75,
     giaiThuong: "Sáng kiến tiêu biểu",
     ngayNop: "04/07/2026",
+    ...SEED_EXTRA,
   },
   {
     id: 10,
@@ -178,6 +199,7 @@ const seedInitiatives: Initiative[] = [
     diem: 64,
     giaiThuong: "Đề cử tháng",
     ngayNop: "05/07/2026",
+    ...SEED_EXTRA,
   },
 ];
 
