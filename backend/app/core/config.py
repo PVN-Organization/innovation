@@ -28,13 +28,15 @@ class Settings(BaseSettings):
     MINIO_SECRET_KEY: str = "minioadmin"
     MINIO_BUCKET_NAME: str = "innovations"
 
-    # ── Azure AD (Admin SSO) ──────────────────────────────
+    # ── Azure AD SSO ──────────────────────────────────────
     AZURE_AD_CLIENT_ID: str = ""
     AZURE_AD_TENANT_ID: str = ""
+    AZURE_AD_CLIENT_SECRET: str = ""
 
     # ── Security ──────────────────────────────────────────
     SECRET_KEY: str = "change-me-to-a-random-secret"
     BACKEND_CORS_ORIGINS: list[str] = ["http://localhost:3000"]
+    FRONTEND_URL: str = "http://localhost:3000"
 
 
 settings = Settings()

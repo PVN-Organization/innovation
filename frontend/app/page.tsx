@@ -7,9 +7,11 @@ import {
 } from "react";
 import type { ReactElement, ReactNode, SVGProps } from "react";
 
-import { DEMO_OTP, useInitiativeForm } from "@/hooks/useInitiativeForm";
+import { useAuth } from "@/hooks/useAuth";
+import { useInitiativeForm, DEPARTMENTS } from "@/hooks/useInitiativeForm";
+import type { AuthorMode } from "@/hooks/useInitiativeForm";
 import { useInitiatives } from "@/hooks/useInitiatives";
-import type { Field, FormState, Initiative, Status } from "@/lib/types";
+import type { AuthorEntry, Field, FormState, Initiative, Status } from "@/lib/types";
 
 type Role = "guest" | "employee" | "admin";
 type View = "landing" | "initiatives" | "stats" | "competition" | "guide" | "admin";
@@ -86,7 +88,6 @@ const Lock: LucideIcon = (props) => (
 );
 
 const fields: Field[] = ["Công nghệ", "Quy trình", "An toàn", "Môi trường", "Khác"];
-const statuses = ["Tất cả", "Chờ duyệt", "Đã duyệt"];
 const departments = [
   "Ban Kỹ thuật Sản xuất",
   "Ban Chuyển đổi số",
@@ -98,65 +99,24 @@ const departments = [
   "Ban Truyền thông và Văn hóa Doanh nghiệp",
 ];
 
-const fieldMeta: Record<
-  Field,
-  { color: string; bg: string; image: string; icon: LucideIcon; words: string[] }
-> = {
-  "Công nghệ": {
-    color: "#0E4FA8",
-    bg: "#EAF2FF",
-    image: "/visuals/thumb-tech.png",
-    icon: Bot,
-    words: ["AI", "Dữ liệu", "Tự động hóa", "Chuyển đổi số", "Kho tri thức"],
-  },
-  "Quy trình": {
-    color: "#078C3B",
-    bg: "#E8F8EF",
-    image: "/visuals/thumb-process.png",
-    icon: FileText,
-    words: ["Quy trình", "Checklist", "Chuẩn hóa", "Vận hành", "Tinh gọn"],
-  },
-  "An toàn": {
-    color: "#F6A800",
-    bg: "#FFF4D6",
-    image: "/visuals/thumb-safety.png",
-    icon: ShieldCheck,
-    words: ["An toàn lao động", "HSE", "Rủi ro", "Phản ứng nhanh", "Ngoài khơi"],
-  },
-  "Môi trường": {
-    color: "#19A957",
-    bg: "#ECFDF3",
-    image: "/visuals/thumb-environment.png",
-    icon: Sparkles,
-    words: ["Tiết kiệm năng lượng", "CO2", "ESG", "Sản xuất xanh", "Phát thải"],
-  },
-  Khác: {
-    color: "#1DBED6",
-    bg: "#E8FBFD",
-    image: "/visuals/thumb-other.png",
-    icon: Lightbulb,
-    words: ["Văn hóa số", "Truyền thông", "Thi đua", "Đoàn viên", "Lan tỏa"],
-  },
-};
-
 const innovators = [
   {
     ten: "Nguyễn Minh Anh",
-    donVi: "Ban Kỹ thuật Sản xuất",
+    donVi: "Ban Thăm dò - Khai thác Dầu khí",
     quote: "Sáng kiến tốt bắt đầu từ một bất tiện nhỏ được nhìn đủ kỹ.",
     count: 3,
     image: "/visuals/thumb-process.png",
   },
   {
     ten: "Trần Hải Yến",
-    donVi: "Ban Chuyển đổi số",
+    donVi: "Ban Khoa học Công nghệ & Chuyển đổi số",
     quote: "Dữ liệu không thay con người, dữ liệu giúp chúng ta quyết định tự tin hơn.",
     count: 3,
     image: "/visuals/thumb-environment.png",
   },
   {
     ten: "Lê Thu Hương",
-    donVi: "Văn phòng Công đoàn",
+    donVi: "Văn phòng Tập đoàn",
     quote: "Đổi mới trong công đoàn là làm cho việc tốt trở nên dễ lặp lại.",
     count: 2,
     image: "/visuals/thumb-other.png",
@@ -164,9 +124,16 @@ const innovators = [
 ];
 
 export default function Home() {
-  const { initiatives, optimisticLike, refresh, addLocal, updateLocal } = useInitiatives();
+  const {
+    initiatives,
+    optimisticLike,
+    refresh: refreshInitiatives,
+    addLocal,
+    updateLocal,
+  } = useInitiatives();
 
-  const [role, setRole] = useState<Role>("guest");
+  const role: Role = authUser?.is_admin ? "admin" : "guest";
+  const isLoggedIn = !!authUser;
   const [view, setView] = useState<View>("landing");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [selectedDepartment, setSelectedDepartment] = useState("Tất cả");
@@ -193,10 +160,13 @@ export default function Home() {
   const {
     form,
     formMessage,
-    otpSentTo,
     editingId,
+    authorMode,
     updateForm,
-    sendOtp,
+    handleModeChange,
+    updateAuthor,
+    addAuthor,
+    removeAuthor,
     handleSubmit: submitInitiative,
     clearForm,
     exportDocx,
@@ -291,26 +261,17 @@ export default function Home() {
     return { approved, pending, interests, topField };
   }, [fieldCounts, initiatives]);
 
-  function requireAuth() {
-    if (isAuthed) return true;
-    setShowLoginPrompt(true);
-    return false;
+  function loginAdmin() {
+    setRole("admin");
+    setView("admin");
+    setChatOpen(false);
   }
 
-  function go(nextView: View) {
-    if (nextView === "admin" && !isAdmin) {
-      setShowLoginPrompt(true);
-      return;
-    }
-    setView(nextView);
-    setMobileOpen(false);
-    if (nextView !== "initiatives") setInitiativeMode("list");
-  }
-
-  function startCreate() {
-    if (!requireAuth()) return;
-    setView("initiatives");
-    setInitiativeMode("form");
+  function logout() {
+    setRole("guest");
+    setView("landing");
+    setSelectedInitiative(null);
+    setChatOpen(false);
   }
 
   function openDetails(item: Initiative) {
@@ -393,27 +354,8 @@ export default function Home() {
   }
 
   return (
-    <main className="app-shell text-[var(--navy-900)]">
-      <TopNav
-        role={role}
-        view={view}
-        mobileOpen={mobileOpen}
-        setMobileOpen={setMobileOpen}
-        go={go}
-        startCreate={startCreate}
-        loginEmployee={() => setRole("employee")}
-        loginAdmin={() => {
-          setRole("admin");
-          setView("admin");
-          setMobileOpen(false);
-        }}
-        logout={() => {
-          setRole("guest");
-          setView("landing");
-          setChatOpen(false);
-          setSelectedInitiative(null);
-        }}
-      />
+    <main className="min-h-screen bg-[#F5F7FA] text-[#172033]">
+      <Navigation role={role} view={view} loginAdmin={loginAdmin} logout={logout} go={go} />
 
       {view === "landing" && (
         <LandingPage
@@ -455,10 +397,22 @@ export default function Home() {
           searchQuery={searchQuery}
           setSelectedDepartment={setSelectedDepartment}
           setSelectedField={setSelectedField}
-          setSelectedStatus={setSelectedStatus}
-          setSearchQuery={setSearchQuery}
+          setPage={setPage}
+          openDetails={openDetails}
+          likeInitiative={likeInitiative}
+        />
+      )}
+
+      {view === "form" && (
+        <InitiativeForm
+          form={form}
+          otpSentTo={otpSentTo}
           updateForm={updateForm}
-          sendOtp={sendOtp}
+          authorMode={authorMode}
+          onModeChange={handleModeChange}
+          updateAuthor={updateAuthor}
+          addAuthor={addAuthor}
+          removeAuthor={removeAuthor}
           submitInitiative={submitInitiative}
           exportDocx={exportDocx}
           clearForm={clearForm}
@@ -569,34 +523,23 @@ export default function Home() {
   );
 }
 
-function TopNav({
+function Navigation({
   role,
   view,
-  mobileOpen,
-  setMobileOpen,
-  go,
-  startCreate,
-  loginEmployee,
   loginAdmin,
   logout,
+  go,
 }: {
-  role: Role;
   view: View;
-  mobileOpen: boolean;
-  setMobileOpen: (value: boolean) => void;
-  go: (view: View) => void;
-  startCreate: () => void;
-  loginEmployee: () => void;
   loginAdmin: () => void;
   logout: () => void;
+  go: (view: View) => void;
 }) {
-  const navItems: { id: View; label: string; icon: LucideIcon; visible: boolean }[] = [
-    { id: "landing", label: "Trang chủ", icon: HomeIcon, visible: true },
-    { id: "initiatives", label: "Sáng kiến", icon: Lightbulb, visible: true },
-    { id: "stats", label: "Thống kê", icon: BarChart3, visible: true },
-    { id: "competition", label: "Thi đua", icon: Trophy, visible: true },
-    { id: "guide", label: "Hướng dẫn", icon: BookOpen, visible: true },
-    { id: "admin", label: "Quản trị", icon: ShieldCheck, visible: role === "admin" },
+  const isAdmin = role === "admin";
+  const navItems: { id: View; label: string; visible: boolean }[] = [
+    { id: "landing", label: "Trang chủ", visible: true },
+    { id: "form", label: "Đăng ký sáng kiến", visible: true },
+    { id: "admin", label: "Quản trị", visible: isAdmin },
   ];
 
   return (
@@ -617,108 +560,43 @@ function TopNav({
         <nav className="hidden items-center gap-1 lg:flex">
           {navItems
             .filter((item) => item.visible)
-            .map((item) => {
-              const Icon = item.icon;
-              return (
-                <button
-                  key={item.id}
-                  className={`focus-ring flex items-center gap-2 whitespace-nowrap border-b-2 px-3 py-6 text-sm font-black transition ${
-                    view === item.id
-                      ? "border-[var(--green-600)] text-[var(--green-600)]"
-                      : "border-transparent text-[var(--navy-900)] hover:text-[var(--green-600)]"
-                  }`}
-                  onClick={() => go(item.id)}
-                >
-                  <Icon className="h-4 w-4" />
-                  {item.label}
-                </button>
-              );
-            })}
-        </nav>
-
-        <div className="hidden items-center gap-2 lg:flex">
-          <button
-            className="focus-ring rounded-md border border-[var(--green-600)] bg-white px-3 py-2 text-sm font-black text-[var(--green-600)]"
-            onClick={startCreate}
-          >
-            Đăng ký sáng kiến
-          </button>
-          {role === "guest" ? (
+            .map((item) => (
+              <button
+                key={item.id}
+                className={`rounded-md px-3 py-2 text-sm font-bold transition ${
+                  view === item.id
+                    ? "bg-[#2E3D8F] text-white shadow-md shadow-[#2E3D8F]/15"
+                    : "bg-white/70 text-[#485466] hover:bg-white"
+                }`}
+                onClick={() => go(item.id)}
+              >
+                {item.label}
+              </button>
+            ))}
+          {!isAdmin ? (
             <button
-              className="focus-ring rounded-md bg-[var(--green-600)] px-3 py-2 text-sm font-black text-white shadow-lg shadow-green-900/10"
-              onClick={loginEmployee}
+              className="rounded-md bg-[#32B34A] px-4 py-2 text-sm font-black text-white shadow-md shadow-[#32B34A]/20"
+              onClick={loginAdmin}
+              title="Đăng nhập quản trị bằng Azure AD"
             >
               Đăng nhập tài khoản Tập đoàn
             </button>
           ) : (
-            <>
-              <span className="rounded-md bg-[var(--green-100)] px-3 py-2 text-sm font-black text-[var(--green-700)]">
-                {role === "admin" ? "Quản trị viên" : "Tài khoản Tập đoàn"}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-md bg-white px-3 py-2 text-sm font-bold text-[#485466]">
+                Quản trị viên
               </span>
-              {role === "employee" && (
-                <button className="focus-ring rounded-md border border-[var(--line)] px-3 py-2 text-sm font-black" onClick={loginAdmin}>
-                  Admin demo
-                </button>
-              )}
-              <button className="focus-ring rounded-md border border-[var(--line)] px-3 py-2 text-sm font-black" onClick={logout}>
+              <button
+                className="rounded-md border border-[#2E3D8F]/15 bg-white px-3 py-2 text-sm font-black text-[#2E3D8F]"
+                onClick={logout}
+              >
                 Đăng xuất
               </button>
-            </>
+            </div>
           )}
         </div>
-
-        <button
-          className="focus-ring grid h-10 w-10 place-items-center rounded-md border border-[var(--line)] bg-white lg:hidden"
-          onClick={() => setMobileOpen(!mobileOpen)}
-          aria-label="Mở menu"
-        >
-          {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </button>
       </div>
-
-      {mobileOpen && (
-        <div className="border-t border-[var(--line)] bg-white lg:hidden">
-          <div className="app-container grid gap-2 py-3">
-            {navItems
-              .filter((item) => item.visible)
-              .map((item) => {
-                const Icon = item.icon;
-                return (
-                  <button
-                    key={item.id}
-                    className={`flex items-center gap-3 rounded-md px-3 py-3 text-left text-sm font-black ${
-                      view === item.id ? "bg-[var(--green-100)] text-[var(--green-700)]" : "text-[var(--navy-900)]"
-                    }`}
-                    onClick={() => go(item.id)}
-                  >
-                    <Icon className="h-4 w-4" />
-                    {item.label}
-                  </button>
-                );
-              })}
-            <button className="rounded-md border border-[var(--green-600)] px-4 py-3 text-sm font-black text-[var(--green-600)]" onClick={startCreate}>
-              Đăng ký sáng kiến
-            </button>
-            {role === "guest" ? (
-              <button className="rounded-md bg-[var(--green-600)] px-4 py-3 text-sm font-black text-white" onClick={loginEmployee}>
-                Đăng nhập tài khoản Tập đoàn
-              </button>
-            ) : (
-              <div className="grid gap-2">
-                {role === "employee" && (
-                  <button className="rounded-md border border-[var(--line)] px-4 py-3 text-sm font-black" onClick={loginAdmin}>
-                    Admin demo
-                  </button>
-                )}
-                <button className="rounded-md border border-[var(--line)] px-4 py-3 text-sm font-black" onClick={logout}>
-                  Đăng xuất
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </header>
+    </nav>
   );
 }
 
@@ -758,28 +636,39 @@ function LandingPage({
   go: (view: View) => void;
 }) {
   return (
-    <>
-      <section className="energy-flow energy-grid relative overflow-hidden bg-white">
-        <div className="app-container grid gap-8 pb-8 pt-10 lg:min-h-[520px] lg:grid-cols-[1.02fr_0.98fr] lg:items-center lg:pb-14 lg:pt-14">
-          <div className="relative z-10">
-            <h1 className="text-balance text-[2.55rem] font-black leading-[1.04] text-[var(--navy-900)] sm:text-6xl lg:text-[4.4rem]">
-              Cổng thông tin sáng kiến Công đoàn Công ty Mẹ
-            </h1>
-            <p className="mt-5 max-w-2xl text-base font-semibold leading-8 text-[var(--navy-800)] sm:text-lg">
-              Đóng góp ý tưởng, tìm cảm hứng với AI, lan tỏa thi đua đổi mới.
-            </p>
-            <div className="mt-7 grid gap-3 sm:grid-cols-3">
-              <ActionTile icon={PenLine} title="Tạo sáng kiến" description="Đề xuất ý tưởng, giải pháp vì tổ chức và người lao động" locked={!isAuthed} onClick={startCreate} />
-              <ActionTile icon={Bot} title="Hỏi AI" description="Tìm cảm hứng, gợi ý giải pháp phù hợp với nhu cầu của bạn" locked={!isAuthed} onClick={openChat} />
-              <ActionTile icon={BarChart3} title="Xem chi tiết" description="Xem chi tiết sáng kiến, số liệu và báo cáo đầy đủ" locked={!isAuthed} onClick={() => (isAuthed ? go("stats") : showLogin())} />
-            </div>
-          </div>
-          <div className="relative z-0">
-            <img
-              src="/visuals/hero-green-innovation-flow.png"
-              alt="Dòng chảy sáng kiến xanh số"
-              className="h-[280px] w-full rounded-xl object-cover shadow-2xl shadow-blue-950/10 sm:h-[360px] lg:h-[420px]"
-            />
+    <section className="relative min-h-[560px] overflow-hidden bg-[#2E3D8F] text-white">
+      <img
+        src="/hero-innovation.png"
+        alt="Minh họa đội ngũ Petrovietnam trao đổi sáng kiến trên dashboard số"
+        className="absolute inset-0 h-full w-full object-cover opacity-70"
+      />
+      <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(46,61,143,0.97)_0%,rgba(46,61,143,0.82)_48%,rgba(46,61,143,0.32)_100%)]" />
+      <div className="absolute inset-x-0 bottom-0 h-32 bg-[linear-gradient(180deg,transparent,#F5F7FA)]" />
+      <div className="soft-grid absolute inset-0 opacity-20" />
+      <div className="relative mx-auto max-w-7xl px-4 pb-24 pt-20 sm:px-6 lg:pb-28 lg:pt-28">
+        <div className="flex max-w-4xl flex-col justify-center">
+          <h2 className="max-w-3xl text-5xl font-black leading-[0.96] sm:text-7xl">
+            Sáng kiến tạo giá trị mới.
+          </h2>
+          <p className="mt-6 max-w-3xl text-base leading-8 text-white/80 sm:text-lg">
+            Nơi ghi nhận, lan tỏa và phát triển các giải pháp giúp Petrovietnam
+            nâng cao hiệu quả vận hành, bảo đảm an toàn, tối ưu chi phí, thúc
+            đẩy chuyển đổi số và đóng góp thiết thực cho mục tiêu sản xuất kinh
+            doanh bền vững.
+          </p>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <button
+              className="rounded-md bg-[#32B34A] px-5 py-3 text-sm font-black text-white shadow-xl shadow-black/20"
+              onClick={() => go("form")}
+            >
+              Gửi sáng kiến mới
+            </button>
+            <button
+              className="rounded-md border border-white/25 bg-white/10 px-5 py-3 text-sm font-black text-white backdrop-blur"
+              onClick={() => go("dashboard")}
+            >
+              Xem bảng xếp hạng
+            </button>
           </div>
         </div>
       </section>
@@ -1416,11 +1305,13 @@ function AdminPortal({
 
 function InitiativeForm({
   form,
-  formMessage,
   otpSentTo,
-  editingId,
   updateForm,
-  sendOtp,
+  authorMode,
+  onModeChange,
+  updateAuthor,
+  addAuthor,
+  removeAuthor,
   submitInitiative,
   exportDocx,
   clearForm,
@@ -1428,11 +1319,13 @@ function InitiativeForm({
   backToList,
 }: {
   form: FormState;
-  formMessage: string;
   otpSentTo: string;
-  editingId: number | null;
   updateForm: (key: keyof FormState, value: string) => void;
-  sendOtp: () => void;
+  authorMode: AuthorMode;
+  onModeChange: (mode: AuthorMode) => void;
+  updateAuthor: (index: number, field: keyof AuthorEntry, value: string) => void;
+  addAuthor: () => void;
+  removeAuthor: (index: number) => void;
   submitInitiative: (event: FormEvent<HTMLFormElement>) => void;
   exportDocx: () => void;
   clearForm: () => void;
@@ -1449,81 +1342,222 @@ function InitiativeForm({
   function addCoAuthor() {
     const nextName = coAuthorDraft.trim();
     if (!nextName) return;
-    updateForm("dongTacGia", [...coAuthors, nextName].join("; "));
+    const nextAuthors = [...coAuthors, nextName];
+    updateForm("dongTacGia", nextAuthors.join("; "));
     setCoAuthorDraft("");
   }
 
+  function removeCoAuthor(index: number) {
+    const nextAuthors = coAuthors.filter((_, currentIndex) => currentIndex !== index);
+    updateForm("dongTacGia", nextAuthors.join("; "));
+  }
+
   return (
-    <form className="card overflow-hidden rounded-xl bg-white" onSubmit={submitInitiative}>
-      <FormSection title="Thông tin chung">
-        <FieldInput label="Tên sáng kiến" value={form.ten} onChange={(value) => updateForm("ten", value)} placeholder="Ví dụ: Tối ưu tiêu thụ năng lượng tại văn phòng" wide />
-        <Select label="Lĩnh vực" value={form.linhVuc} onChange={(value) => updateForm("linhVuc", value)} options={fields} />
-        <Select label="Đơn vị/Phòng ban" value={form.donVi} onChange={(value) => updateForm("donVi", value)} options={departments} />
-      </FormSection>
-
-      <FormSection title="Tác giả và đơn vị">
-        <FieldInput label="Tác giả chính" value={form.tacGia} onChange={(value) => updateForm("tacGia", value)} placeholder="Nhập họ và tên tác giả chính" />
+    <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <span className="text-sm font-black">Đồng tác giả</span>
-          <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-            <input className="min-w-0 flex-1 rounded-md border border-[var(--line)] px-4 py-3 outline-none focus:border-[var(--green-600)]" value={coAuthorDraft} onChange={(event) => setCoAuthorDraft(event.target.value)} placeholder="Nhập tên rồi bấm Thêm" />
-            <button type="button" className="rounded-md bg-[var(--navy-900)] px-4 py-3 text-sm font-black text-white" onClick={addCoAuthor}>
-              Thêm
-            </button>
-          </div>
-          {coAuthors.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {coAuthors.map((name, index) => (
-                <span key={`${name}-${index}`} className="rounded-full bg-[var(--green-100)] px-3 py-1.5 text-xs font-black text-[var(--green-700)]">{name}</span>
-              ))}
-            </div>
-          )}
+          <h2 className="text-4xl font-black leading-tight text-[#2E3D8F]">
+            {editingId ? "Chỉnh sửa sáng kiến" : "Biểu mẫu đăng ký sáng kiến"}
+          </h2>
         </div>
-      </FormSection>
+        <div className="flex flex-wrap gap-2">
+          <span className="rounded-md border border-[#2E3D8F]/15 bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.08em] text-[#2E3D8F]">
+            Chờ duyệt
+          </span>
+        </div>
+      </div>
 
-      <FormSection title="Nội dung sáng kiến">
-        <RichTextArea label="Nội dung tóm tắt" value={form.tomTat} onChange={(value) => updateForm("tomTat", value)} placeholder="Mô tả vấn đề, giải pháp đề xuất và phạm vi áp dụng..." />
-      </FormSection>
+      <form className="premium-card overflow-hidden rounded-lg bg-white" onSubmit={submitInitiative}>
+        <div className="border-b border-[#2E3D8F]/10 bg-white px-5 py-5 sm:px-7">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <h3 className="text-xl font-black text-[#2E3D8F]">Thông tin sáng kiến</h3>
+            <span className="text-sm font-bold text-[#667085]">Mã OTP mẫu: {DEMO_OTP}</span>
+          </div>
+        </div>
 
-      <FormSection title="Hiệu quả dự kiến">
-        <RichTextArea label="Hiệu quả dự kiến" value={form.hieuQua} onChange={(value) => updateForm("hieuQua", value)} placeholder="Nêu hiệu quả về chi phí, thời gian, an toàn, môi trường hoặc chất lượng phục vụ đoàn viên..." />
-      </FormSection>
+        <div className="grid gap-x-5 gap-y-5 px-5 py-6 sm:px-7 md:grid-cols-2">
+          <label className="block md:col-span-2">
+            <span className="text-sm font-black text-[#263451]">Tên sáng kiến</span>
+            <input
+              className="mt-2 w-full rounded-md border border-[#2E3D8F]/16 bg-white px-4 py-3 text-base outline-none transition focus:border-[#32B34A] focus:ring-4 focus:ring-[#32B34A]/10"
+              value={form.ten}
+              onChange={(event) => updateForm("ten", event.target.value)}
+              placeholder="Ví dụ: Tối ưu tiêu thụ năng lượng tại văn phòng"
+            />
+          </label>
 
-      <FormSection title="Xác thực email">
-        <div className="md:col-span-2 grid gap-4 md:grid-cols-[1.1fr_0.9fr]">
-          <label>
-            <span className="text-sm font-black">Email xác thực</span>
+          <label className="block">
+            <span className="text-sm font-black text-[#263451]">Lĩnh vực</span>
+            <select
+              className="mt-2 w-full rounded-md border border-[#2E3D8F]/16 bg-white px-4 py-3 text-base font-bold text-[#243047] outline-none transition focus:border-[#32B34A] focus:ring-4 focus:ring-[#32B34A]/10"
+              value={form.linhVuc}
+              onChange={(event) => updateForm("linhVuc", event.target.value)}
+            >
+              {fields.map((field) => (
+                <option key={field} value={field}>
+                  {field}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="text-sm font-black text-[#263451]">Đơn vị/Phòng ban</span>
+            <select
+              className="mt-2 w-full rounded-md border border-[#2E3D8F]/16 bg-white px-4 py-3 text-base font-bold text-[#243047] outline-none transition focus:border-[#32B34A] focus:ring-4 focus:ring-[#32B34A]/10"
+              value={form.donVi}
+              onChange={(event) => updateForm("donVi", event.target.value)}
+            >
+              {departments.map((department) => (
+                <option key={department} value={department}>
+                  {department}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="text-sm font-black text-[#263451]">Tác giả chính</span>
+            <input
+              className="mt-2 w-full rounded-md border border-[#2E3D8F]/16 bg-white px-4 py-3 text-base outline-none transition focus:border-[#32B34A] focus:ring-4 focus:ring-[#32B34A]/10"
+              value={form.tacGia}
+              onChange={(event) => updateForm("tacGia", event.target.value)}
+              placeholder="Nhập họ và tên tác giả chính"
+            />
+          </label>
+
+          <div className="block">
+            <span className="text-sm font-black text-[#263451]">Đồng tác giả</span>
             <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-              <input className="min-w-0 flex-1 rounded-md border border-[var(--line)] px-4 py-3 outline-none focus:border-[var(--green-600)]" value={form.email} onChange={(event) => updateForm("email", event.target.value)} placeholder="name@pvn.vn" type="email" />
-              <button type="button" className="rounded-md bg-[var(--green-600)] px-4 py-3 text-sm font-black text-white disabled:opacity-45" onClick={sendOtp} disabled={!form.email.trim()}>
-                Gửi OTP
+              <input
+                className="min-w-0 flex-1 rounded-md border border-[#2E3D8F]/16 bg-white px-4 py-3 text-base outline-none transition focus:border-[#32B34A] focus:ring-4 focus:ring-[#32B34A]/10"
+                value={coAuthorDraft}
+                onChange={(event) => setCoAuthorDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    addCoAuthor();
+                  }
+                }}
+                placeholder="Nhập tên rồi bấm Thêm"
+              />
+              <button
+                className="shrink-0 rounded-md bg-[#2E3D8F] px-4 py-3 text-sm font-black text-white"
+                type="button"
+                onClick={addCoAuthor}
+              >
+                Thêm
               </button>
             </div>
-          </label>
-          <FieldInput label="Mã OTP Email" value={form.otp} onChange={(value) => updateForm("otp", value)} placeholder="Nhập mã OTP trong email" />
+            {coAuthors.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {coAuthors.map((name, index) => (
+                  <span
+                    key={`${name}-${index}`}
+                    className="inline-flex max-w-full items-center gap-2 rounded-md border border-[#2E3D8F]/15 bg-[#EEF1FF] px-3 py-2 text-sm font-bold text-[#2E3D8F]"
+                  >
+                    <span className="truncate">{name}</span>
+                    <button
+                      className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-white text-xs font-black text-[#2E3D8F]"
+                      type="button"
+                      aria-label={`Xóa đồng tác giả ${name}`}
+                      onClick={() => removeCoAuthor(index)}
+                    >
+                      x
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-        {otpReady && !editingId && <p className="md:col-span-2 rounded-md bg-[var(--green-100)] p-3 text-sm font-bold text-[var(--green-700)]">OTP mô phỏng đã gửi tới {otpSentTo}. Mã dùng thử: {DEMO_OTP}</p>}
-        {formMessage && <p className="md:col-span-2 rounded-md bg-[var(--blue-100)] p-3 text-sm font-bold text-[var(--blue-700)]">{formMessage}</p>}
-      </FormSection>
 
-      <div className="sticky bottom-0 z-10 flex flex-col gap-3 border-t border-[var(--line)] bg-white/95 px-5 py-4 backdrop-blur sm:flex-row sm:justify-end">
-        <button className="rounded-md border border-[var(--line)] px-5 py-3 text-sm font-black" type="button" onClick={backToList}>
-          Danh sách
-        </button>
-        <button className="rounded-md border border-[var(--line)] px-5 py-3 text-sm font-black" type="button" onClick={clearForm}>
-          Hủy
-        </button>
-        <button className="rounded-md border border-[var(--blue-700)] px-5 py-3 text-sm font-black text-[var(--blue-700)]" type="button" onClick={showWordPreview}>
-          Xem preview bản Word
-        </button>
-        <button className="rounded-md bg-[var(--navy-900)] px-5 py-3 text-sm font-black text-white" type="button" onClick={exportDocx}>
-          Xuất File DOCX
-        </button>
-        <button className="rounded-md bg-[var(--green-600)] px-5 py-3 text-sm font-black text-white" type="submit">
-          {otpReady && !editingId ? "Xác thực OTP và gửi" : "Gửi Sáng Kiến"}
-        </button>
-      </div>
-    </form>
+        <div className="border-y border-[#2E3D8F]/10 bg-[#F8FAFC] px-5 py-6 sm:px-7">
+          <h3 className="text-xl font-black text-[#2E3D8F]">Xác thực Email</h3>
+          <div className="mt-4 grid gap-4 md:grid-cols-[1.1fr_0.9fr]">
+            <label className="block">
+              <span className="text-sm font-black text-[#263451]">Email xác thực</span>
+              <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                <input
+                  className="min-w-0 flex-1 rounded-md border border-[#2E3D8F]/16 bg-white px-4 py-3 text-base outline-none transition focus:border-[#32B34A] focus:ring-4 focus:ring-[#32B34A]/10"
+                  value={form.email}
+                  onChange={(event) => updateForm("email", event.target.value)}
+                  placeholder="name@pvn.vn"
+                  type="email"
+                />
+                <button
+                  className="shrink-0 rounded-md bg-[#32B34A] px-4 py-3 text-sm font-black text-white shadow-md shadow-[#32B34A]/20 disabled:opacity-45"
+                  type="button"
+                  onClick={sendOtp}
+                  disabled={!form.email.trim()}
+                >
+                  Gửi OTP
+                </button>
+              </div>
+            </label>
+
+            <label className="block">
+              <span className="text-sm font-black text-[#263451]">Mã OTP Email</span>
+              <input
+                className="mt-2 w-full rounded-md border border-[#2E3D8F]/16 bg-white px-4 py-3 text-base outline-none transition focus:border-[#32B34A] focus:ring-4 focus:ring-[#32B34A]/10"
+                value={form.otp}
+                onChange={(event) => updateForm("otp", event.target.value)}
+                placeholder="Nhập mã OTP trong email"
+                inputMode="numeric"
+              />
+            </label>
+          </div>
+          {otpReady && !editingId && (
+            <p className="mt-4 rounded-md border border-[#32B34A]/25 bg-[#F0FBF2] p-3 text-sm font-bold text-[#237D34]">
+              OTP mô phỏng đã gửi tới {otpSentTo}. Mã dùng thử: {DEMO_OTP}
+            </p>
+          )}
+        </div>
+
+        <div className="grid gap-5 px-5 py-6 sm:px-7">
+          <TextArea
+            label="Nội dung tóm tắt"
+            value={form.tomTat}
+            onChange={(value) => updateForm("tomTat", value)}
+            placeholder="Mô tả vấn đề, giải pháp đề xuất và phạm vi áp dụng..."
+          />
+          <TextArea
+            label="Hiệu quả dự kiến"
+            value={form.hieuQua}
+            onChange={(value) => updateForm("hieuQua", value)}
+            placeholder="Nêu hiệu quả về chi phí, thời gian, an toàn, môi trường hoặc chất lượng phục vụ đoàn viên..."
+          />
+          {message && (
+            <p className="rounded-md border border-[#2E3D8F]/12 bg-[#EEF1FF] p-3 text-sm font-bold text-[#2E3D8F]">
+              {message}
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-3 border-t border-[#2E3D8F]/10 bg-white px-5 py-5 sm:flex-row sm:justify-end sm:px-7">
+          <button
+            className="rounded-md border border-[#2E3D8F]/15 bg-white px-5 py-3 text-sm font-black text-[#2E3D8F]"
+            type="button"
+            onClick={clearForm}
+          >
+            Hủy
+          </button>
+          <button
+            className="rounded-md bg-[#2E3D8F] px-5 py-3 text-sm font-black text-white"
+            type="button"
+            onClick={exportDocx}
+          >
+            Xuất File DOCX
+          </button>
+          <button
+            className="rounded-md bg-[#32B34A] px-5 py-3 text-sm font-black text-white shadow-md shadow-[#32B34A]/20"
+            type="submit"
+          >
+            {otpReady && !editingId ? "Xác thực OTP và gửi" : "Gửi Sáng Kiến"}
+          </button>
+        </div>
+      </form>
+    </section>
   );
 }
 
@@ -1903,18 +1937,26 @@ function FieldInput({ label, value, onChange, placeholder, wide = false }: { lab
   );
 }
 
-function RichTextArea({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (value: string) => void; placeholder: string }) {
+function TextArea({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}) {
   return (
-    <label className="md:col-span-2">
+    <label className="mt-4 block">
       <span className="text-sm font-black">{label}</span>
-      <div className="mt-2 overflow-hidden rounded-md border border-[var(--line)] bg-white">
-        <div className="flex gap-1 border-b border-[var(--line)] bg-[var(--mist)] p-2">
-          {["B", "•", "1."].map((tool) => (
-            <button key={tool} type="button" className="grid h-8 w-8 place-items-center rounded border border-[var(--line)] bg-white text-xs font-black">{tool}</button>
-          ))}
-        </div>
-        <textarea className="min-h-36 w-full resize-y px-4 py-3 outline-none" value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} />
-      </div>
+      <textarea
+        className="mt-2 min-h-32 w-full resize-y rounded-md border border-black/10 bg-white px-3 py-3 text-sm leading-6 outline-none focus:border-[#2E3D8F]"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+      />
     </label>
   );
 }
