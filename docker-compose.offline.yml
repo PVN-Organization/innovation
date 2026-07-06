@@ -70,8 +70,10 @@ services:
   frontend:
     image: innovation-frontend:on-premise
     restart: unless-stopped
+    cap_add:
+      - NET_BIND_SERVICE
     ports:
-      - "${FRONTEND_HOST_PORT:-10003}:3000"
+      - "${FRONTEND_HOST_PORT:-10003}:80"
     depends_on:
       backend:
         condition: service_healthy
