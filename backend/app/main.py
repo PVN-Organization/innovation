@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 from app.api.v1.admin import router as admin_router
+from app.api.v1.auth import router as auth_router
 from app.api.v1.chatbot import router as chatbot_router
 from app.api.v1.initiatives import router as initiatives_router
 from app.core.config import settings
@@ -52,6 +53,7 @@ app.add_middleware(
 
 # ── Route mounting ─────────────────────────────────────────────────
 
+app.include_router(auth_router, prefix="/api/v1")
 app.include_router(initiatives_router, prefix="/api/v1")
 app.include_router(chatbot_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
