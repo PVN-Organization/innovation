@@ -1,0 +1,90 @@
+# On-premise deploy WITHOUT building on the server (air-gapped).
+# 1) On a machine with internet: ./scripts/build-offline-bundle.sh
+# 2) Copy offline-bundle/ to server
+# 3) On server: ./scripts/load-offline-bundle.sh && docker compose -f docker-compose.offline.yml up -d
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-innovation}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-innovation}
+      POSTGRES_DB: ${POSTGRES_DB:-innovation_db}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "${PG_HOST_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-innovation} -d $${POSTGRES_DB:-innovation_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  minio:
+    image: minio/minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    volumes:
+      - miniodata:/data
+    ports:
+      - "${MINIO_API_HOST_PORT:-9010}:9000"
+      - "${MINIO_CONSOLE_HOST_PORT:-9011}:9001"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  backend:
+    image: innovation-backend:on-premise
+    restart: unless-stopped
+    environment:
+      POSTGRES_ASYNC_URL: "postgresql+asyncpg://${POSTGRES_USER:-innovation}:${POSTGRES_PASSWORD:-innovation}@postgres:5432/${POSTGRES_DB:-innovation_db}"
+      MINIO_ENDPOINT: "http://minio:9000"
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET_NAME: ${MINIO_BUCKET_NAME:-innovations}
+      AZURE_AD_CLIENT_ID: ${AZURE_AD_CLIENT_ID:-}
+      AZURE_AD_TENANT_ID: ${AZURE_AD_TENANT_ID:-}
+      AZURE_AD_CLIENT_SECRET: ${AZURE_AD_CLIENT_SECRET:-}
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-["http://localhost:3000"]}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      DEBUG: ${DEBUG:-false}
+    ports:
+      - "${BACKEND_HOST_PORT:-10004}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    image: innovation-frontend:on-premise
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_HOST_PORT:-10003}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  miniodata:
+
+networks:
+  default:
+    name: innovation-net
