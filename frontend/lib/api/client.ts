@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 export { API_BASE };
 
@@ -31,13 +31,16 @@ export async function get<T>(
   path: string,
   params?: Record<string, string | undefined>,
 ): Promise<T> {
-  const url = new URL(`${API_BASE}${path}`);
+  let url = `${API_BASE}${path}`;
   if (params) {
+    const qs = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) {
-      if (value !== undefined && value !== "") url.searchParams.set(key, value);
+      if (value !== undefined && value !== "") qs.set(key, value);
     }
+    const s = qs.toString();
+    if (s) url += `?${s}`;
   }
-  const response = await fetch(url.toString(), { credentials: "include" });
+  const response = await fetch(url, { credentials: "include" });
   return handleResponse<T>(response);
 }
 

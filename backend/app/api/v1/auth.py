@@ -117,7 +117,7 @@ async def auth_callback(
         max_age=SESSION_MAX_AGE,
         httponly=True,
         samesite="lax",
-        secure=False,
+        secure=settings.COOKIE_SECURE,
         path="/",
     )
     return response
