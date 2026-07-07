@@ -12,7 +12,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { useInitiativeForm, DEPARTMENTS } from "@/hooks/useInitiativeForm";
 import type { AuthorMode, FormFieldErrors } from "@/hooks/useInitiativeForm";
 import { useInitiatives } from "@/hooks/useInitiatives";
-import { BYPASS_AUTH_TEMP } from "@/lib/auth-bypass";
 import type { AuthorEntry, Field, FormState, Initiative, Status } from "@/lib/types";
 
 type Role = "guest" | "employee" | "admin";
@@ -254,7 +253,6 @@ export default function Home() {
     },
   });
   const isAuthed = Boolean(authUser);
-  const canRegisterInitiative = isAuthed || BYPASS_AUTH_TEMP;
   const isAdmin = Boolean(authUser?.is_admin);
 
   useEffect(() => {
@@ -292,7 +290,7 @@ export default function Home() {
   }
 
   function startCreate() {
-    if (!canRegisterInitiative && !requireAuth()) return;
+    if (!requireAuth()) return;
     resetForm();
     setView("initiatives");
     setInitiativeMode("form");
@@ -654,7 +652,6 @@ export default function Home() {
       {view === "initiatives" && (
         <InitiativesPage
           isAuthed={isAuthed}
-          canRegisterInitiative={canRegisterInitiative}
           mode={initiativeMode}
           setMode={setInitiativeMode}
           items={detailedFiltered}
@@ -1315,7 +1312,6 @@ function FieldFlowChart({
 
 function InitiativesPage({
   isAuthed,
-  canRegisterInitiative,
   mode,
   setMode,
   items,
@@ -1352,7 +1348,6 @@ function InitiativesPage({
   tablePulse,
 }: {
   isAuthed: boolean;
-  canRegisterInitiative: boolean;
   mode: "list" | "form";
   setMode: (mode: "list" | "form") => void;
   items: Initiative[];
@@ -1388,7 +1383,7 @@ function InitiativesPage({
   login: () => void;
   tablePulse: boolean;
 }) {
-  if (!canRegisterInitiative) {
+  if (!isAuthed) {
     return (
     <PageFrame eyebrow="Sáng kiến" title="Đăng nhập để gửi và xem chi tiết sáng kiến" variant="campaign">
         <AuthGatePanel
@@ -1914,7 +1909,7 @@ function GuidePage({
               Ban Quản trị nguồn nhân lực thì nên làm sáng kiến gì?
             </button>
           </div>
-          <button className="mt-5 rounded-md bg-[var(--green-600)] px-4 py-2 text-sm font-black text-white" onClick={isAuthed || BYPASS_AUTH_TEMP ? startCreate : login}>
+          <button className="mt-5 rounded-md bg-[var(--green-600)] px-4 py-2 text-sm font-black text-white" onClick={isAuthed ? startCreate : login}>
             {isAuthed ? "Tạo sáng kiến" : "Đăng nhập để hỏi AI"}
           </button>
         </div>

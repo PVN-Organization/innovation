@@ -66,8 +66,8 @@ async def create_initiative(
                 detail="Authentication required",
             )
         user = CurrentUser(
-            email="anonymous@temp.local",
-            name="Khách (tạm)",
+            email="test@pvn.vn",
+            name="Tài khoản test",
             is_admin=False,
         )
 
