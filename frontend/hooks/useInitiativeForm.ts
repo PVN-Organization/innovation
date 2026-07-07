@@ -337,6 +337,13 @@ export function useInitiativeForm({
     onCancel();
   }
 
+  function resetForm() {
+    setForm(EMPTY_FORM);
+    setEditingId(null);
+    setAuthorMode("solo");
+    setFormMessage("");
+  }
+
   function getAuthorsForEdit(initiative: Initiative): AuthorEntry[] {
     if (initiative.danhSachTacGia) {
       try {
@@ -454,6 +461,7 @@ export function useInitiativeForm({
     removeAuthor,
     handleSubmit,
     clearForm,
+    resetForm,
     exportDocx,
     startEdit,
   };

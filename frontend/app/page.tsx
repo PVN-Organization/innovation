@@ -163,7 +163,6 @@ export default function Home() {
 
   const [demoRole, setRole] = useState<Role>("guest");
   const role: Role = authUser?.is_admin ? "admin" : authUser ? "employee" : demoRole;
-  const isLoggedIn = !!authUser;
   const [view, setView] = useState<View>("landing");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [selectedDepartment, setSelectedDepartment] = useState("Tất cả");
@@ -199,6 +198,7 @@ export default function Home() {
     removeAuthor,
     handleSubmit: submitInitiative,
     clearForm,
+    resetForm,
     exportDocx,
     startEdit,
   } = useInitiativeForm({
@@ -221,7 +221,7 @@ export default function Home() {
   }
 
   function go(nextView: View) {
-    if ((nextView === "stats" || nextView === "initiatives") && !isAuthed) {
+    if (nextView === "stats" && !isAuthed) {
       setShowLoginPrompt(true);
       return;
     }
@@ -230,12 +230,13 @@ export default function Home() {
       return;
     }
     setView(nextView);
+    setMobileOpen(false);
     setChatOpen(false);
   }
 
   function startCreate() {
     if (!requireAuth()) return;
-    clearForm();
+    resetForm();
     setView("initiatives");
     setInitiativeMode("form");
   }
@@ -319,12 +320,20 @@ export default function Home() {
   function loginAdmin() {
     setRole("admin");
     setView("admin");
+    setMobileOpen(false);
     setChatOpen(false);
+  }
+
+  function loginEmployee() {
+    setRole("employee");
+    setShowLoginPrompt(false);
+    setMobileOpen(false);
   }
 
   function logout() {
     setRole("guest");
     setView("landing");
+    setMobileOpen(false);
     setSelectedInitiative(null);
     setChatOpen(false);
   }
@@ -409,8 +418,18 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-[#F5F7FA] text-[#172033]">
-      <Navigation role={role} view={view} loginAdmin={loginAdmin} logout={logout} go={go} />
+    <main className="app-shell text-[var(--navy-900)]">
+      <Navigation
+        role={role}
+        view={view}
+        mobileOpen={mobileOpen}
+        setMobileOpen={setMobileOpen}
+        login={loginEmployee}
+        loginAdmin={loginAdmin}
+        startCreate={startCreate}
+        logout={logout}
+        go={go}
+      />
 
       {view === "landing" && (
         <LandingPage
@@ -466,7 +485,7 @@ export default function Home() {
           likeInitiative={likeInitiative}
           editInitiative={editInitiative}
           showWordPreview={() => setShowWordPreview(true)}
-          login={() => setRole("employee")}
+          login={loginEmployee}
         />
       )}
 
@@ -489,7 +508,7 @@ export default function Home() {
           setSearchQuery={setSearchQuery}
           openDetails={openDetails}
           likeInitiative={likeInitiative}
-          login={() => setRole("employee")}
+          login={loginEmployee}
         />
       )}
 
@@ -502,7 +521,7 @@ export default function Home() {
           departmentCounts={departmentCounts}
           leaderBoard={leaderBoard}
           openDetails={openDetails}
-          login={() => setRole("employee")}
+          login={loginEmployee}
         />
       )}
 
@@ -514,7 +533,7 @@ export default function Home() {
             if (!requireAuth()) return;
             setChatOpen(true);
           }}
-          login={() => setRole("employee")}
+          login={loginEmployee}
         />
       )}
 
@@ -548,10 +567,7 @@ export default function Home() {
       {showLoginPrompt && (
         <LoginPrompt
           close={() => setShowLoginPrompt(false)}
-          login={() => {
-            setRole("employee");
-            setShowLoginPrompt(false);
-          }}
+          login={loginEmployee}
         />
       )}
 
@@ -563,6 +579,7 @@ export default function Home() {
           input={chatInput}
           setInput={setChatInput}
           send={sendChat}
+          startCreate={startCreate}
         />
       )}
     </main>
@@ -572,77 +589,197 @@ export default function Home() {
 function Navigation({
   role,
   view,
+  mobileOpen,
+  setMobileOpen,
+  login,
   loginAdmin,
+  startCreate,
   logout,
   go,
 }: {
   role: Role;
   view: View;
+  mobileOpen: boolean;
+  setMobileOpen: (value: boolean) => void;
+  login: () => void;
   loginAdmin: () => void;
+  startCreate: () => void;
   logout: () => void;
   go: (view: View) => void;
 }) {
   const isAdmin = role === "admin";
-  const navItems: { id: View; label: string; visible: boolean }[] = [
-    { id: "landing", label: "Trang chủ", visible: true },
-    { id: "initiatives", label: "Đăng ký sáng kiến", visible: true },
-    { id: "admin", label: "Quản trị", visible: isAdmin },
+  const isGuest = role === "guest";
+  const roleLabel = isAdmin ? "Quản trị viên" : role === "employee" ? "Tài khoản Tập đoàn" : "Chưa đăng nhập";
+  const navItems: { id: View; label: string; icon: LucideIcon; visible: boolean }[] = [
+    { id: "landing", label: "Trang chủ", icon: HomeIcon, visible: true },
+    { id: "initiatives", label: "Sáng kiến", icon: PenLine, visible: true },
+    { id: "stats", label: "Thống kê", icon: BarChart3, visible: true },
+    { id: "competition", label: "Thi đua", icon: Trophy, visible: true },
+    { id: "guide", label: "Hướng dẫn", icon: BookOpen, visible: true },
+    { id: "admin", label: "Quản trị", icon: ShieldCheck, visible: isAdmin },
   ];
+  const visibleNavItems = navItems.filter((item) => item.visible);
+
+  function handleGo(nextView: View) {
+    go(nextView);
+  }
+
+  function handleCreate() {
+    startCreate();
+    setMobileOpen(false);
+  }
 
   return (
     <header className="top-nav sticky top-0 z-40">
       <div className="app-container flex h-16 items-center justify-between gap-4 lg:h-[76px]">
-        <button className="focus-ring flex min-w-0 items-center gap-3 text-left lg:w-[270px]" onClick={() => go("landing")}>
+        <button className="focus-ring flex min-w-0 items-center gap-3 text-left xl:w-[285px]" onClick={() => go("landing")}>
           <img src="/logo-pvn.png" alt="Petrovietnam" className="h-10 w-auto object-contain" />
           <span className="leading-tight">
-            <span className="block text-[11px] font-black uppercase text-[var(--green-600)] sm:text-xs">
+            <span className="block whitespace-nowrap text-[11px] font-black uppercase text-[var(--green-600)] sm:text-xs">
               Công đoàn Công ty Mẹ
             </span>
-            <span className="block text-sm font-black uppercase text-[var(--green-600)] sm:text-base">
+            <span className="block whitespace-nowrap text-sm font-black uppercase text-[var(--green-600)] sm:text-base">
               Cổng thông tin sáng kiến
             </span>
           </span>
         </button>
 
-        <nav className="hidden items-center gap-1 lg:flex">
-          {navItems
-            .filter((item) => item.visible)
-            .map((item) => (
+        <nav className="hidden items-center gap-1 xl:flex">
+          {visibleNavItems.map((item) => {
+            const Icon = item.icon;
+            return (
               <button
                 key={item.id}
-                className={`rounded-md px-3 py-2 text-sm font-bold transition ${
+                className={`inline-flex items-center gap-2 whitespace-nowrap rounded-md px-2.5 py-2 text-sm font-bold transition ${
                   view === item.id
-                    ? "bg-[#2E3D8F] text-white shadow-md shadow-[#2E3D8F]/15"
-                    : "bg-white/70 text-[#485466] hover:bg-white"
+                    ? "bg-[var(--navy-900)] text-white shadow-md shadow-[var(--navy-900)]/15"
+                    : "bg-white/70 text-[var(--navy-800)] hover:bg-white"
                 }`}
-                onClick={() => go(item.id)}
+                onClick={() => handleGo(item.id)}
               >
+                <Icon className="h-4 w-4" />
                 {item.label}
               </button>
-            ))}
-          {!isAdmin ? (
-            <button
-              className="rounded-md bg-[#32B34A] px-4 py-2 text-sm font-black text-white shadow-md shadow-[#32B34A]/20"
-              onClick={loginAdmin}
-              title="Đăng nhập quản trị bằng Azure AD"
-            >
-              Đăng nhập tài khoản Tập đoàn
-            </button>
-          ) : (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-md bg-white px-3 py-2 text-sm font-bold text-[#485466]">
-                Quản trị viên
-              </span>
+            );
+          })}
+        </nav>
+
+        <div className="hidden items-center gap-2 xl:flex">
+          {isGuest ? (
+            <>
               <button
-                className="rounded-md border border-[#2E3D8F]/15 bg-white px-3 py-2 text-sm font-black text-[#2E3D8F]"
+                className="whitespace-nowrap rounded-md border border-[var(--green-600)] bg-white px-3 py-2 text-sm font-black text-[var(--green-700)]"
+                onClick={() => handleGo("initiatives")}
+              >
+                Đăng ký sáng kiến
+              </button>
+              <button
+                className="whitespace-nowrap rounded-md bg-[var(--green-600)] px-3 py-2 text-sm font-black text-white shadow-md shadow-[var(--green-600)]/20"
+                onClick={login}
+              >
+                Đăng nhập tài khoản Tập đoàn
+              </button>
+              <button
+                className="whitespace-nowrap rounded-md border border-[var(--line)] bg-white px-3 py-2 text-xs font-black text-[var(--muted)]"
+                onClick={loginAdmin}
+                title="Prototype: đăng nhập Admin"
+              >
+                Admin
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="rounded-md bg-white px-3 py-2 text-sm font-bold text-[var(--muted)]">
+                {roleLabel}
+              </span>
+              {!isAdmin && (
+                <button
+                  className="rounded-md border border-[var(--line)] bg-white px-3 py-2 text-xs font-black text-[var(--muted)]"
+                  onClick={loginAdmin}
+                  title="Prototype: chuyển sang Admin"
+                >
+                  Admin
+                </button>
+              )}
+              <button
+                className="whitespace-nowrap rounded-md bg-[var(--green-600)] px-3 py-2 text-sm font-black text-white shadow-md shadow-[var(--green-600)]/20"
+                onClick={handleCreate}
+              >
+                Tạo sáng kiến
+              </button>
+              <button
+                className="rounded-md border border-[var(--line)] bg-white px-3 py-2 text-sm font-black text-[var(--navy-800)]"
                 onClick={logout}
               >
                 Đăng xuất
               </button>
-            </div>
+            </>
           )}
-        </nav>
+        </div>
+
+        <button
+          className="grid h-10 w-10 place-items-center rounded-md border border-[var(--line)] bg-white text-[var(--navy-900)] xl:hidden"
+          onClick={() => setMobileOpen(!mobileOpen)}
+          aria-label={mobileOpen ? "Đóng menu" : "Mở menu"}
+        >
+          {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        </button>
       </div>
+
+      {mobileOpen && (
+        <div className="border-t border-[var(--line)] bg-white/96 px-4 py-4 shadow-xl xl:hidden">
+          <div className="mx-auto grid max-w-7xl gap-2">
+            <div className="mb-2 rounded-lg bg-[var(--mist)] px-3 py-2 text-sm font-black text-[var(--navy-800)]">
+              {roleLabel}
+            </div>
+            {visibleNavItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.id}
+                  className={`flex items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-black ${
+                    view === item.id ? "bg-[var(--navy-900)] text-white" : "bg-white text-[var(--navy-800)]"
+                  }`}
+                  onClick={() => handleGo(item.id)}
+                >
+                  <Icon className="h-5 w-5" />
+                  {item.label}
+                </button>
+              );
+            })}
+            {isGuest ? (
+              <div className="mt-2 grid gap-2">
+                <button
+                  className="rounded-md border border-[var(--green-600)] px-4 py-3 text-sm font-black text-[var(--green-700)]"
+                  onClick={() => handleGo("initiatives")}
+                >
+                  Đăng ký sáng kiến
+                </button>
+                <button className="rounded-md bg-[var(--green-600)] px-4 py-3 text-sm font-black text-white" onClick={login}>
+                  Đăng nhập tài khoản Tập đoàn
+                </button>
+                <button className="rounded-md border border-[var(--line)] px-4 py-3 text-sm font-black text-[var(--muted)]" onClick={loginAdmin}>
+                  Đăng nhập Admin
+                </button>
+              </div>
+            ) : (
+              <div className="mt-2 grid gap-2">
+                {!isAdmin && (
+                  <button className="rounded-md border border-[var(--line)] px-4 py-3 text-sm font-black text-[var(--muted)]" onClick={loginAdmin}>
+                    Chuyển sang Admin
+                  </button>
+                )}
+                <button className="rounded-md bg-[var(--green-600)] px-4 py-3 text-sm font-black text-white" onClick={handleCreate}>
+                  Tạo sáng kiến
+                </button>
+                <button className="rounded-md border border-[var(--line)] px-4 py-3 text-sm font-black" onClick={logout}>
+                  Đăng xuất
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </header>
   );
 }
@@ -695,13 +832,13 @@ function LandingPage({
         <div className="energy-grid absolute inset-0 opacity-55" />
         <div className="app-container relative z-10 pb-16 pt-12 sm:pb-20 sm:pt-16 lg:pb-24 lg:pt-20">
           <div className="max-w-[650px]">
-            <h1 className="text-balance text-[2.6rem] font-black leading-[1.05] text-[var(--navy-900)] sm:text-6xl lg:text-[4.45rem]">
+            <h1 className="text-balance text-[2.15rem] font-black leading-[1.05] text-[var(--navy-900)] sm:text-6xl lg:text-[4.45rem]">
               Cổng thông tin sáng kiến Công đoàn Công ty Mẹ
             </h1>
             <p className="mt-5 max-w-xl text-base font-semibold leading-8 text-[var(--navy-800)] sm:text-lg">
               Đóng góp ý tưởng, tìm cảm hứng với AI, lan tỏa thi đua đổi mới.
             </p>
-            <div className="mt-7 grid max-w-3xl gap-3 sm:grid-cols-3">
+            <div className="mt-7 grid max-w-3xl grid-cols-3 gap-2 sm:gap-3">
               <ActionTile icon={PenLine} title="Tạo sáng kiến" description="Đề xuất ý tưởng, giải pháp vì tổ chức và người lao động" locked={!isAuthed} onClick={startCreate} />
               <ActionTile icon={Bot} title="Hỏi AI" description="Tìm cảm hứng, gợi ý giải pháp phù hợp với nhu cầu của bạn" locked={!isAuthed} onClick={openChat} />
               <ActionTile icon={BarChart3} title="Xem chi tiết" description="Xem chi tiết sáng kiến, số liệu và báo cáo đầy đủ" locked={!isAuthed} onClick={() => (isAuthed ? go("stats") : showLogin())} />
@@ -727,6 +864,8 @@ function LandingPage({
           </div>
         </div>
       </section>
+
+      <JourneyStrip isAuthed={isAuthed} startCreate={startCreate} openChat={openChat} go={go} showLogin={showLogin} />
 
       <BasicStats
         filtered={filtered}
@@ -756,6 +895,64 @@ function LandingPage({
 
       <HonorFooter />
     </>
+  );
+}
+
+function JourneyStrip({
+  isAuthed,
+  startCreate,
+  openChat,
+  go,
+  showLogin,
+}: {
+  isAuthed: boolean;
+  startCreate: () => void;
+  openChat: () => void;
+  go: (view: View) => void;
+  showLogin: () => void;
+}) {
+  const items = [
+    {
+      icon: Sparkles,
+      title: "Guest: xem phong trào",
+      text: "Theo dõi thống kê cơ bản, leaderboard và sáng kiến nổi bật trước khi đăng nhập.",
+      action: "Xem thi đua",
+      onClick: () => go("competition"),
+    },
+    {
+      icon: Bot,
+      title: "Employee: tìm cảm hứng với AI",
+      text: "Dùng prompt mẫu để khám phá ý tưởng theo lĩnh vực, đơn vị và dữ liệu sáng kiến.",
+      action: isAuthed ? "Hỏi AI" : "Đăng nhập để hỏi AI",
+      onClick: isAuthed ? openChat : showLogin,
+    },
+    {
+      icon: FileText,
+      title: "Đóng góp và lưu trữ",
+      text: "Điền form, xem preview Word, xuất DOCX và gửi vào kho dữ liệu quản trị.",
+      action: isAuthed ? "Tạo sáng kiến" : "Đăng nhập để gửi",
+      onClick: isAuthed ? startCreate : showLogin,
+    },
+  ];
+
+  return (
+    <section className="app-container py-8">
+      <div className="grid gap-4 lg:grid-cols-3">
+        {items.map((item) => {
+          const Icon = item.icon;
+          return (
+            <article key={item.title} className="card-soft rounded-xl p-5">
+              <Icon className="h-8 w-8 text-[var(--green-600)]" />
+              <h3 className="mt-4 text-lg font-black text-[var(--navy-900)]">{item.title}</h3>
+              <p className="mt-2 min-h-12 text-sm leading-6 text-[var(--muted)]">{item.text}</p>
+              <button className="mt-4 rounded-md bg-[var(--navy-900)] px-4 py-2 text-sm font-black text-white" onClick={item.onClick}>
+                {item.action}
+              </button>
+            </article>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -1288,8 +1485,18 @@ function AdminPortal({
   setStatus: (value: string) => void;
   exportCsv: () => void;
 }) {
+  const approved = items.filter((item) => item.trangThai === "Đã duyệt").length;
+  const interests = items.reduce((sum, item) => sum + item.quanTam, 0);
+  const authors = new Set(items.map((item) => item.tacGia)).size;
+
   return (
     <PageFrame eyebrow="Admin Portal" title="Kho dữ liệu Sáng kiến">
+      <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatTile icon={FileText} value={String(items.length)} label="Sáng kiến trong kho" caption="Theo bộ lọc hiện tại" color="var(--blue-700)" card />
+        <StatTile icon={ShieldCheck} value={String(approved)} label="Đã duyệt" caption="Có thể lan tỏa" color="var(--green-600)" card />
+        <StatTile icon={Heart} value={String(interests)} label="Lượt quan tâm" caption="Tín hiệu thị hiếu" color="var(--green-500)" card />
+        <StatTile icon={Users} value={String(authors)} label="Tác giả" caption="Cá nhân tham gia" color="var(--gold-500)" card />
+      </div>
       <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
         <section className="card overflow-hidden rounded-xl">
           <div className="grid gap-3 border-b border-[var(--line)] p-4 md:grid-cols-4">
@@ -1791,8 +1998,15 @@ function DetailModal({
             <Metric label="Ngày nộp" value={item.ngayNop} />
           </div>
           <div className="mt-6 space-y-5 text-sm leading-7 text-[var(--navy-800)]">
+            <ContentBlock title="Lý do đề xuất" text={item.lyDo} />
+            <ContentBlock title="Mục tiêu" text={item.mucTieu} />
+            <ContentBlock title="Thực trạng" text={item.thucTrang} />
+            <ContentBlock title="Giải pháp mới" text={item.giaiPhap} />
+            <ContentBlock title="Cách thức áp dụng" text={item.cachThuc} />
             <ContentBlock title="Nội dung tóm tắt" text={item.tomTat} />
             <ContentBlock title="Hiệu quả dự kiến" text={item.hieuQua} />
+            <ContentBlock title="Tính mới" text={item.tinhMoi} />
+            <ContentBlock title="Khả năng nhân rộng" text={item.nhanRong} />
           </div>
           {canInteract && (
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
@@ -1819,6 +2033,7 @@ function Chatbot({
   input,
   setInput,
   send,
+  startCreate,
 }: {
   open: boolean;
   setOpen: (value: boolean) => void;
@@ -1826,11 +2041,17 @@ function Chatbot({
   input: string;
   setInput: (value: string) => void;
   send: (text: string) => void;
+  startCreate: () => void;
 }) {
   const prompts = [
     "Gợi ý cho tôi sáng kiến về tiết kiệm KHCN-ĐMST",
     "Ban Quản trị nguồn nhân lực thì nên làm sáng kiến gì?",
   ];
+
+  function handleCreateFromChat() {
+    setOpen(false);
+    startCreate();
+  }
 
   return (
     <div className="fixed bottom-4 right-4 z-40 sm:bottom-5 sm:right-5">
@@ -1858,6 +2079,11 @@ function Chatbot({
             <input className="min-w-0 flex-1 rounded-md border border-[var(--line)] px-3 py-2 text-sm outline-none focus:border-[var(--green-600)]" value={input} onChange={(event) => setInput(event.target.value)} placeholder="Nhập câu hỏi..." />
             <button className="rounded-md bg-[var(--green-600)] px-3 py-2 text-sm font-black text-white">Gửi</button>
           </form>
+          <div className="border-t border-[var(--line)] bg-[var(--mist)] p-3">
+            <button className="w-full rounded-md bg-[var(--navy-900)] px-3 py-2 text-sm font-black text-white" onClick={handleCreateFromChat}>
+              Dùng gợi ý để tạo sáng kiến
+            </button>
+          </div>
         </section>
       )}
       <button className="grid h-13 w-13 place-items-center rounded-full bg-[var(--green-600)] text-white shadow-xl shadow-green-900/25 ring-4 ring-white sm:h-14 sm:w-14" onClick={() => setOpen(!open)} aria-label="Mở trợ lý AI">
@@ -1896,14 +2122,14 @@ function SectionTitle({ eyebrow, title, icon: Icon = Sparkles }: { eyebrow?: str
 
 function ActionTile({ icon: Icon, title, description, locked, onClick }: { icon: LucideIcon; title: string; description: string; locked: boolean; onClick: () => void }) {
   return (
-    <button className="card-soft focus-ring rounded-xl p-4 text-left transition hover:-translate-y-0.5 hover:bg-white" onClick={onClick}>
-      <Icon className="h-8 w-8 text-[var(--green-600)]" />
-      <p className="mt-3 font-black">{title}</p>
-      <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{description}</p>
+    <button className="card-soft focus-ring rounded-xl p-3 text-left transition hover:-translate-y-0.5 hover:bg-white sm:p-4" onClick={onClick}>
+      <Icon className="h-6 w-6 text-[var(--green-600)] sm:h-8 sm:w-8" />
+      <p className="mt-3 text-sm font-black sm:text-base">{title}</p>
+      <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-[var(--muted)] sm:text-xs">{description}</p>
       {locked && (
-        <p className="mt-3 flex items-center gap-1 text-xs font-black text-[var(--muted)]">
+        <p className="mt-3 flex items-center gap-1 text-[10px] font-black text-[var(--muted)] sm:text-xs">
           <Lock className="h-3.5 w-3.5" />
-          Khóa đến khi đăng nhập
+          <span className="line-clamp-1">Khóa đến khi đăng nhập</span>
         </p>
       )}
     </button>
@@ -1994,9 +2220,27 @@ function DonutChart({ total, fieldCounts, compact = false }: { total: number; fi
   );
 }
 
-function FilterBar({ selectedDepartment, selectedField, selectedStatus, searchQuery, setSelectedDepartment, setSelectedField, setSelectedStatus, setSearchQuery }: { selectedDepartment: string; selectedField: string; selectedStatus: string; searchQuery: string; setSelectedDepartment: (value: string) => void; setSelectedField: (value: string) => void; setSelectedStatus: (value: string) => void; setSearchQuery: (value: string) => void }) {
-  return (
-    <div className="card sticky top-[76px] z-20 grid gap-3 rounded-xl p-4 md:grid-cols-[1fr_1fr_1fr_1.2fr]">
+function FilterBar({
+  selectedDepartment,
+  selectedField,
+  selectedStatus,
+  searchQuery,
+  setSelectedDepartment,
+  setSelectedField,
+  setSelectedStatus,
+  setSearchQuery,
+}: {
+  selectedDepartment: string;
+  selectedField: string;
+  selectedStatus: string;
+  searchQuery: string;
+  setSelectedDepartment: (value: string) => void;
+  setSelectedField: (value: string) => void;
+  setSelectedStatus: (value: string) => void;
+  setSearchQuery: (value: string) => void;
+}) {
+  const controls = (
+    <>
       <Select label="Phòng ban" value={selectedDepartment} onChange={setSelectedDepartment} options={["Tất cả", ...departments]} />
       <Select label="Lĩnh vực" value={selectedField} onChange={setSelectedField} options={["Tất cả", ...fields]} />
       <Select label="Trạng thái" value={selectedStatus} onChange={setSelectedStatus} options={statuses} />
@@ -2004,7 +2248,24 @@ function FilterBar({ selectedDepartment, selectedField, selectedStatus, searchQu
         <span className="flex items-center gap-2 text-xs font-black uppercase text-[var(--muted)]"><Filter className="h-3.5 w-3.5" /> Tìm kiếm</span>
         <input className="mt-2 w-full rounded-md border border-[var(--line)] px-3 py-2 text-sm font-semibold outline-none focus:border-[var(--green-600)]" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Tên, tác giả, nội dung..." />
       </label>
-    </div>
+    </>
+  );
+
+  return (
+    <>
+      <div className="card sticky top-[76px] z-20 hidden gap-3 rounded-xl p-4 md:grid md:grid-cols-[1fr_1fr_1fr_1.2fr]">
+        {controls}
+      </div>
+      <details className="card sticky top-16 z-20 rounded-xl p-3 md:hidden">
+        <summary className="flex cursor-pointer list-none items-center justify-between rounded-lg bg-[var(--mist)] px-3 py-3 text-sm font-black text-[var(--navy-900)]">
+          <span className="flex items-center gap-2"><Filter className="h-4 w-4" /> Bộ lọc</span>
+          <span className="text-xs text-[var(--muted)]">{selectedField} / {selectedStatus}</span>
+        </summary>
+        <div className="mt-3 grid gap-3">
+          {controls}
+        </div>
+      </details>
+    </>
   );
 }
 
@@ -2032,15 +2293,6 @@ function Select({ label, value, onChange, options }: { label: string; value: str
   );
 }
 
-function FieldInput({ label, value, onChange, placeholder, wide = false }: { label: string; value: string; onChange: (value: string) => void; placeholder: string; wide?: boolean }) {
-  return (
-    <label className={wide ? "md:col-span-2" : ""}>
-      <span className="text-sm font-black">{label}</span>
-      <input className="mt-2 w-full rounded-md border border-[var(--line)] px-4 py-3 outline-none focus:border-[var(--green-600)]" value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} />
-    </label>
-  );
-}
-
 function TextArea({
   label,
   value,
@@ -2052,25 +2304,34 @@ function TextArea({
   onChange: (value: string) => void;
   placeholder: string;
 }) {
+  const append = (snippet: string) => {
+    const spacer = value.trim().length > 0 && !value.endsWith("\n") ? "\n" : "";
+    onChange(`${value}${spacer}${snippet}`);
+  };
+
   return (
     <label className="mt-4 block">
-      <span className="text-sm font-black">{label}</span>
+      <span className="flex items-center justify-between gap-3">
+        <span className="text-sm font-black">{label}</span>
+        <span className="flex shrink-0 gap-1 rounded-md border border-[var(--line)] bg-[var(--mist)] p-1">
+          <button className="grid h-7 w-7 place-items-center rounded bg-white text-xs font-black text-[var(--navy-900)]" type="button" onClick={() => append("• ")}>
+            •
+          </button>
+          <button className="grid h-7 w-7 place-items-center rounded bg-white text-xs font-black text-[var(--navy-900)]" type="button" onClick={() => append("1. ")}>
+            1.
+          </button>
+          <button className="grid h-7 w-7 place-items-center rounded bg-white text-xs font-black text-[var(--navy-900)]" type="button" onClick={() => append("**nội dung nhấn mạnh**")}>
+            B
+          </button>
+        </span>
+      </span>
       <textarea
-        className="mt-2 min-h-32 w-full resize-y rounded-md border border-black/10 bg-white px-3 py-3 text-sm leading-6 outline-none focus:border-[#2E3D8F]"
+        className="mt-2 min-h-32 w-full resize-y rounded-md border border-[var(--line)] bg-white px-3 py-3 text-sm leading-6 outline-none focus:border-[var(--green-600)] focus:ring-4 focus:ring-[var(--green-100)]"
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
       />
     </label>
-  );
-}
-
-function FormSection({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="border-b border-[var(--line)] p-5 sm:p-7">
-      <h3 className="mb-4 text-lg font-black text-[var(--navy-900)]">{title}</h3>
-      <div className="grid gap-5 md:grid-cols-2">{children}</div>
-    </section>
   );
 }
 
