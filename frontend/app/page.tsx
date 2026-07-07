@@ -1032,7 +1032,7 @@ function LandingPage({
                 Viết sáng kiến
               </button>
               <button className="rounded-md border border-[var(--green-600)] bg-white/85 px-5 py-3 text-sm font-black text-[var(--green-700)]" onClick={openChat}>
-                Hỏi AI
+                Khám phá với AI
               </button>
             </div>
           </div>
@@ -1131,7 +1131,7 @@ function LandingAiCard({ isAuthed, openChat, showLogin }: { isAuthed: boolean; o
         ))}
       </div>
       <button className="mt-5 w-full rounded-md bg-[var(--green-600)] px-4 py-3 text-sm font-black text-white" onClick={isAuthed ? openChat : showLogin}>
-        {isAuthed ? "Mở trợ lý AI" : "Đăng nhập để hỏi AI"}
+        {isAuthed ? "Chat với trợ lý AI" : "Đăng nhập để hỏi AI"}
       </button>
     </article>
   );
@@ -1477,7 +1477,7 @@ function InitiativesPage({
           <div className="note-card rounded-xl p-5">
             <Bot className="h-8 w-8 text-[var(--green-600)]" />
             <h3 className="mt-3 font-black">Bí ý tưởng?</h3>
-            <p className="mt-2 text-sm leading-6 text-[var(--navy-800)]">Mở Trợ lý AI ở góc màn hình để nhận gợi ý theo dữ liệu sáng kiến mẫu.</p>
+            <p className="mt-2 text-sm leading-6 text-[var(--navy-800)]">Chat với Trợ lý AI ở góc màn hình để nhận gợi ý theo dữ liệu sáng kiến mẫu.</p>
           </div>
         </aside>
       </div>
@@ -2716,7 +2716,7 @@ function Chatbot({
       <button
         className="ml-auto grid h-13 w-13 place-items-center rounded-full bg-[var(--green-600)] text-white shadow-xl shadow-green-900/25 ring-4 ring-white sm:h-14 sm:w-14"
         onClick={() => setOpen(!open)}
-        aria-label={open ? "Đóng trợ lý AI" : "Mở trợ lý AI"}
+        aria-label={open ? "Đóng trợ lý AI" : "Chat với trợ lý AI"}
       >
         <Bot className="h-7 w-7" />
       </button>
