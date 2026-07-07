@@ -15,7 +15,7 @@ from sqlalchemy import func, select, update
 
 from app.core.config import settings
 from app.core.database import DbDep
-from app.core.security import CurrentUserDep
+from app.core.security import CurrentUser, CurrentUserDep, OptionalUserDep
 from app.models.audit_log import AuditLog
 from app.models.file import File as FileModel
 from app.models.initiative import Initiative, LinhVuc, TrangThai
@@ -37,7 +37,7 @@ router = APIRouter(prefix="/initiatives", tags=["Initiatives"])
 )
 async def create_initiative(
     db: DbDep,
-    user: CurrentUserDep,
+    user: OptionalUserDep,
     request: Request,
     ten: Annotated[str, Form()],
     linh_vuc: Annotated[LinhVuc, Form(alias="linhVuc")],
@@ -59,6 +59,18 @@ async def create_initiative(
     file: UploadFile | None = None,
 ) -> InitiativeResponse:
     """Create a new initiative with optional file attachment."""
+    if user is None:
+        if not settings.BYPASS_AUTH_TEMP:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required",
+            )
+        user = CurrentUser(
+            email="anonymous@temp.local",
+            name="Khách (tạm)",
+            is_admin=False,
+        )
+
     initiative = Initiative(
         ten=ten,
         linh_vuc=linh_vuc,

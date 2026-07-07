@@ -42,5 +42,8 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "http://localhost:10003"
     COOKIE_SECURE: bool = False
 
+    # TEMP: allow anonymous initiative submission (disable before auth go-live)
+    BYPASS_AUTH_TEMP: bool = True
+
 
 settings = Settings()

@@ -51,6 +51,7 @@ services:
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:10003}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       DEBUG: ${DEBUG:-false}
+      BYPASS_AUTH_TEMP: ${BYPASS_AUTH_TEMP:-true}
     ports:
       - "${BACKEND_HOST_PORT:-10004}:8000"
     depends_on:
@@ -71,6 +72,7 @@ services:
       context: ./frontend
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+        NEXT_PUBLIC_BYPASS_AUTH_TEMP: ${NEXT_PUBLIC_BYPASS_AUTH_TEMP:-true}
     restart: unless-stopped
     cap_add:
       - NET_BIND_SERVICE

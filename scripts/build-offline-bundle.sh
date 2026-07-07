@@ -8,6 +8,7 @@ cd "$ROOT_DIR"
 PLATFORM="${PLATFORM:-linux/amd64}"
 BUNDLE_DIR="${BUNDLE_DIR:-offline-bundle}"
 API_URL="${NEXT_PUBLIC_API_URL:-}"
+BYPASS_AUTH="${NEXT_PUBLIC_BYPASS_AUTH_TEMP:-true}"
 
 mkdir -p "$BUNDLE_DIR"
 
@@ -21,6 +22,7 @@ docker build \
 docker build \
   --platform "$PLATFORM" \
   --build-arg "NEXT_PUBLIC_API_URL=$API_URL" \
+  --build-arg "NEXT_PUBLIC_BYPASS_AUTH_TEMP=$BYPASS_AUTH" \
   -t innovation-frontend:on-premise \
   ./frontend
 

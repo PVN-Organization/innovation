@@ -53,6 +53,7 @@ services:
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:10003}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       DEBUG: ${DEBUG:-false}
+      BYPASS_AUTH_TEMP: ${BYPASS_AUTH_TEMP:-true}
     ports:
       - "${BACKEND_HOST_PORT:-10004}:8000"
     depends_on:
