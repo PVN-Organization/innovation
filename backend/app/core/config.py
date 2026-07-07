@@ -35,8 +35,11 @@ class Settings(BaseSettings):
 
     # ── Security ──────────────────────────────────────────
     SECRET_KEY: str = "change-me-to-a-random-secret"
-    BACKEND_CORS_ORIGINS: list[str] = ["http://localhost:3000"]
-    FRONTEND_URL: str = "http://localhost:3000"
+    BACKEND_CORS_ORIGINS: list[str] = [
+        "http://localhost:10003",
+        "http://localhost:3000",
+    ]
+    FRONTEND_URL: str = "http://localhost:10003"
     COOKIE_SECURE: bool = False
 
 

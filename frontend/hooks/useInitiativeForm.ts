@@ -2,11 +2,17 @@
 
 import { FormEvent, useCallback, useState } from "react";
 
-import { API_BASE } from "@/lib/api/client";
+import { API_BASE, ApiError } from "@/lib/api/client";
 import { submitInitiative as apiSubmit } from "@/lib/api/initiatives";
 import type { AuthorEntry, FormState, Initiative } from "@/lib/types";
 
 export type AuthorMode = "solo" | "team";
+export type FormFieldErrors = Record<string, string>;
+
+const AUTHOR_ROLE = "Đồng tác giả";
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_TEN_LENGTH = 500;
+const MAX_DOCX_BYTES = 10 * 1024 * 1024;
 
 const DEPARTMENTS = [
   "Cơ quan Kiểm tra Đảng ủy Tập đoàn",
@@ -36,14 +42,14 @@ const DEPARTMENTS = [
 
 export { DEPARTMENTS };
 
-function emptyAuthor(vaiTro: string): AuthorEntry {
-  return { vaiTro, hoTen: "", chucVu: "", donVi: "", email: "" };
+function emptyAuthor(): AuthorEntry {
+  return { vaiTro: AUTHOR_ROLE, hoTen: "", chucVu: "", donVi: "", email: "" };
 }
 
 const EMPTY_FORM: FormState = {
   ten: "",
   linhVuc: "Công nghệ",
-  danhSachTacGia: [emptyAuthor("Tác giả")],
+  danhSachTacGia: [emptyAuthor()],
   donVi: DEPARTMENTS[0],
   email: "",
   thoiGianTu: "",
@@ -71,27 +77,45 @@ const REQUIRED_TEXT_FIELDS: { key: keyof FormState; label: string }[] = [
 ];
 
 type Deps = {
-  initiatives: Initiative[];
-  addLocal: (initiative: Initiative) => void;
   updateLocal: (id: number, data: Partial<Initiative>) => void;
   refreshInitiatives: () => Promise<void>;
   onCancel: () => void;
 };
 
+type ValidationResult = {
+  isValid: boolean;
+  fieldErrors: FormFieldErrors;
+  summaryMessage: string;
+};
+
+function isDocxFile(file: File): boolean {
+  const name = file.name.toLowerCase();
+  return (
+    name.endsWith(".docx") ||
+    file.type ===
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  );
+}
+
 export function useInitiativeForm({
-  initiatives,
-  addLocal,
   updateLocal,
   refreshInitiatives,
   onCancel,
 }: Deps) {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [formMessage, setFormMessage] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<FormFieldErrors>({});
   const [editingId, setEditingId] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [authorMode, setAuthorMode] = useState<AuthorMode>("solo");
+  const [finalDocxFile, setFinalDocxFile] = useState<File | null>(null);
 
   function updateForm(key: keyof FormState, value: string) {
+    setFieldErrors((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
     setForm((current) => {
       const nextForm = { ...current, [key]: value };
       if (authorMode !== "solo" || (key !== "donVi" && key !== "email")) {
@@ -113,9 +137,14 @@ export function useInitiativeForm({
 
   const updateAuthor = useCallback(
     (index: number, field: keyof AuthorEntry, value: string) => {
+      setFieldErrors((current) => {
+        const next = { ...current };
+        delete next[`author.${index}.${field}`];
+        return next;
+      });
       setForm((current) => {
         const next = [...current.danhSachTacGia];
-        next[index] = { ...next[index], [field]: value };
+        next[index] = { ...next[index], [field]: value, vaiTro: AUTHOR_ROLE };
         return { ...current, danhSachTacGia: next };
       });
     },
@@ -125,17 +154,16 @@ export function useInitiativeForm({
   const addAuthor = useCallback(() => {
     setForm((current) => ({
       ...current,
-      danhSachTacGia: [
-        ...current.danhSachTacGia,
-        emptyAuthor("Đồng tác giả"),
-      ],
+      danhSachTacGia: [...current.danhSachTacGia, emptyAuthor()],
     }));
   }, []);
 
   const removeAuthor = useCallback((index: number) => {
     setForm((current) => ({
       ...current,
-      danhSachTacGia: current.danhSachTacGia.filter((_, i) => i !== index),
+      danhSachTacGia: current.danhSachTacGia
+        .filter((_, i) => i !== index)
+        .map((author) => ({ ...author, vaiTro: AUTHOR_ROLE })),
     }));
   }, []);
 
@@ -148,28 +176,27 @@ export function useInitiativeForm({
           current.danhSachTacGia[0]
             ? {
                 ...current.danhSachTacGia[0],
-                vaiTro: "Tác giả",
+                vaiTro: AUTHOR_ROLE,
                 donVi: current.donVi,
                 email: current.email,
               }
-            : { ...emptyAuthor("Tác giả"), donVi: current.donVi, email: current.email },
+            : { ...emptyAuthor(), donVi: current.donVi, email: current.email },
         ],
       }));
-    } else {
-      setForm((current) => {
-        const updated = current.danhSachTacGia.map((a) => ({
-          ...a,
-          vaiTro: "Đồng tác giả",
-        }));
-        return {
-          ...current,
-          danhSachTacGia:
-            updated.length > 1
-              ? updated
-              : [...updated, emptyAuthor("Đồng tác giả")],
-        };
-      });
+      return;
     }
+
+    setForm((current) => {
+      const updated = current.danhSachTacGia.map((author) => ({
+        ...author,
+        vaiTro: AUTHOR_ROLE,
+      }));
+      return {
+        ...current,
+        danhSachTacGia:
+          updated.length > 1 ? updated : [...updated, emptyAuthor()],
+      };
+    });
   }
 
   function formatDateVN(iso: string): string {
@@ -190,64 +217,101 @@ export function useInitiativeForm({
     const tacGia = authors[0]?.hoTen ?? "";
     const dongTacGia = authors
       .slice(1)
-      .map((a) => a.hoTen)
+      .map((author) => author.hoTen)
       .filter(Boolean)
       .join("; ");
     return { tacGia, dongTacGia };
   }
 
+  function validateForm(
+    currentForm: FormState = form,
+    docxFile: File | null = finalDocxFile,
+  ): ValidationResult {
+    const errors: FormFieldErrors = {};
+
+    for (const { key, label } of REQUIRED_TEXT_FIELDS) {
+      if (!(currentForm[key] as string).trim()) {
+        errors[key] = `${label} là bắt buộc.`;
+      }
+    }
+
+    if (currentForm.ten.trim().length > MAX_TEN_LENGTH) {
+      errors.ten = `Tên sáng kiến tối đa ${MAX_TEN_LENGTH} ký tự.`;
+    }
+
+    const contactEmail = currentForm.email.trim();
+    if (contactEmail && !EMAIL_RE.test(contactEmail)) {
+      errors.email = "Email liên hệ không hợp lệ (ví dụ: ten@pvn.vn).";
+    }
+
+    currentForm.danhSachTacGia.forEach((author, index) => {
+      if (!author.hoTen.trim()) {
+        errors[`author.${index}.hoTen`] = `Họ và tên đồng tác giả ${index + 1} là bắt buộc.`;
+      }
+      const authorEmail = author.email.trim();
+      if (authorEmail && !EMAIL_RE.test(authorEmail)) {
+        errors[`author.${index}.email`] = "Email không hợp lệ.";
+      }
+    });
+
+    const { thoiGianTu, thoiGianDen } = currentForm;
+    if (thoiGianTu && thoiGianDen && thoiGianTu > thoiGianDen) {
+      errors.thoiGian = "Thời gian kết thúc phải sau hoặc bằng thời gian bắt đầu.";
+    }
+
+    if (docxFile) {
+      if (!isDocxFile(docxFile)) {
+        errors.finalDocx = "Chỉ chấp nhận file .docx.";
+      } else if (docxFile.size > MAX_DOCX_BYTES) {
+        errors.finalDocx = "File DOCX tối đa 10MB.";
+      }
+    }
+
+    const labels = Object.values(errors);
+    const summaryMessage =
+      labels.length > 0
+        ? `Vui lòng kiểm tra lại: ${labels.join(" ")}`
+        : "";
+
+    return {
+      isValid: labels.length === 0,
+      fieldErrors: errors,
+      summaryMessage,
+    };
+  }
+
+  function applyValidation(result: ValidationResult): boolean {
+    setFieldErrors(result.fieldErrors);
+    if (!result.isValid) {
+      setFormMessage(result.summaryMessage);
+      return false;
+    }
+    setFieldErrors({});
+    return true;
+  }
+
+  function setFinalDocx(file: File | null) {
+    setFieldErrors((current) => {
+      const next = { ...current };
+      delete next.finalDocx;
+      return next;
+    });
+    setFinalDocxFile(file);
+  }
+
+  function clearFinalDocx() {
+    setFinalDocx(null);
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const missing = REQUIRED_TEXT_FIELDS.filter(
-      ({ key }) => !(form[key] as string).trim(),
-    ).map(({ label }) => label);
-
-    const firstAuthor = form.danhSachTacGia[0];
-    if (!firstAuthor?.hoTen.trim()) {
-      missing.unshift("Họ và tên tác giả");
-    }
-
-    if (authorMode === "team") {
-      form.danhSachTacGia.slice(1).forEach((a, i) => {
-        if (!a.hoTen.trim()) {
-          missing.push(`Họ và tên đồng tác giả #${i + 2}`);
-        }
-      });
-    }
-
-    if (missing.length > 0) {
-      setFormMessage(
-        `Vui lòng nhập đầy đủ các trường bắt buộc: ${missing.join(", ")}.`,
-      );
-      return;
-    }
-
-    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const email = form.email.trim();
-    if (!emailRe.test(email)) {
-      setFormMessage("Vui lòng nhập email hợp lệ (ví dụ: ten@pvn.vn).");
-      return;
-    }
-
-    const badAuthorEmails: string[] = [];
-    form.danhSachTacGia.forEach((a, i) => {
-      const ae = a.email.trim();
-      if (ae && !emailRe.test(ae)) {
-        badAuthorEmails.push(
-          `${a.hoTen || `Tác giả #${i + 1}`} ("${ae}")`,
-        );
-      }
-    });
-    if (badAuthorEmails.length > 0) {
-      setFormMessage(
-        `Email tác giả không hợp lệ: ${badAuthorEmails.join(", ")}.`,
-      );
-      return;
-    }
+    if (!applyValidation(validateForm())) return;
 
     const { tacGia, dongTacGia } = deriveFlatAuthors(form.danhSachTacGia);
-    const danhSachTacGiaJson = JSON.stringify(form.danhSachTacGia);
+    const danhSachTacGiaJson = JSON.stringify(
+      form.danhSachTacGia.map((author) => ({ ...author, vaiTro: AUTHOR_ROLE })),
+    );
     const thoiGian = deriveThoiGian();
 
     if (editingId) {
@@ -262,10 +326,12 @@ export function useInitiativeForm({
       setEditingId(null);
       setForm(EMPTY_FORM);
       setAuthorMode("solo");
+      setFinalDocxFile(null);
       return;
     }
 
     setIsSubmitting(true);
+    let submitted = false;
     try {
       const fd = new FormData();
       fd.append("ten", form.ten);
@@ -285,54 +351,40 @@ export function useInitiativeForm({
       fd.append("tinhMoi", form.tinhMoi);
       fd.append("nhanRong", form.nhanRong);
       if (form.email) fd.append("email", form.email);
+      if (finalDocxFile) fd.append("file", finalDocxFile, finalDocxFile.name);
 
       await apiSubmit(fd);
       await refreshInitiatives();
       setFormMessage("Đã gửi sáng kiến. Hồ sơ đã chuyển sang trạng thái Chờ duyệt.");
-    } catch {
-      const now = new Date();
-      const pad = (n: number) => String(n).padStart(2, "0");
-      addLocal({
-        id: Math.max(0, ...initiatives.map((i) => i.id)) + 1,
-        ten: form.ten,
-        linhVuc: form.linhVuc,
-        tacGia,
-        dongTacGia,
-        danhSachTacGia: danhSachTacGiaJson,
-        donVi: form.donVi,
-        email: form.email,
-        thoiGian,
-        lyDo: form.lyDo,
-        mucTieu: form.mucTieu,
-        thucTrang: form.thucTrang,
-        giaiPhap: form.giaiPhap,
-        cachThuc: form.cachThuc,
-        tomTat: form.tomTat,
-        hieuQua: form.hieuQua,
-        tinhMoi: form.tinhMoi,
-        nhanRong: form.nhanRong,
-        quanTam: 0,
-        trangThai: "Chờ duyệt",
-        diem: 10,
-        giaiThuong: "Chờ xét chọn",
-        ngayNop: `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()}`,
-        cuaToi: true,
-      });
+      submitted = true;
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setFormMessage("Vui lòng đăng nhập tài khoản Tập đoàn trước khi gửi sáng kiến.");
+        return;
+      }
       setFormMessage(
-        "Đã gửi sáng kiến. Hồ sơ đã chuyển sang trạng thái Chờ duyệt.",
+        err instanceof Error
+          ? `Không thể gửi sáng kiến: ${err.message}`
+          : "Không thể gửi sáng kiến. Vui lòng thử lại.",
       );
+      return;
     } finally {
       setIsSubmitting(false);
     }
 
-    setForm(EMPTY_FORM);
-    setAuthorMode("solo");
+    if (submitted) {
+      setForm(EMPTY_FORM);
+      setAuthorMode("solo");
+      setFinalDocxFile(null);
+    }
   }
 
   function clearForm() {
     setForm(EMPTY_FORM);
     setEditingId(null);
     setAuthorMode("solo");
+    setFieldErrors({});
+    setFinalDocxFile(null);
     setFormMessage("Đã hủy nhập liệu và trở về danh sách sáng kiến.");
     onCancel();
   }
@@ -341,6 +393,8 @@ export function useInitiativeForm({
     setForm(EMPTY_FORM);
     setEditingId(null);
     setAuthorMode("solo");
+    setFieldErrors({});
+    setFinalDocxFile(null);
     setFormMessage("");
   }
 
@@ -358,11 +412,18 @@ export function useInitiativeForm({
       const authors = [...next.danhSachTacGia];
       authors[0] = {
         ...first,
+        vaiTro: AUTHOR_ROLE,
         donVi: data.donVi ?? first.donVi,
         email: data.email ?? first.email,
       };
 
-      return { ...next, danhSachTacGia: authors };
+      return {
+        ...next,
+        danhSachTacGia: authors.map((author) => ({
+          ...author,
+          vaiTro: AUTHOR_ROLE,
+        })),
+      };
     });
     setEditingId(null);
     setAuthorMode((data.danhSachTacGia?.length ?? 1) > 1 ? "team" : "solo");
@@ -374,8 +435,8 @@ export function useInitiativeForm({
       try {
         const parsed = JSON.parse(initiative.danhSachTacGia);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((author, index) => ({
-            vaiTro: String(author.vaiTro || (index === 0 ? "Tác giả" : "Đồng tác giả")),
+          return parsed.map((author) => ({
+            vaiTro: AUTHOR_ROLE,
             hoTen: String(author.hoTen || ""),
             chucVu: String(author.chucVu || ""),
             donVi: String(author.donVi || initiative.donVi || ""),
@@ -389,7 +450,7 @@ export function useInitiativeForm({
 
     return [
       {
-        ...emptyAuthor("Tác giả"),
+        ...emptyAuthor(),
         hoTen: initiative.tacGia,
         donVi: initiative.donVi,
         email: initiative.email ?? "",
@@ -399,7 +460,7 @@ export function useInitiativeForm({
         .map((name) => name.trim())
         .filter(Boolean)
         .map((name) => ({
-          ...emptyAuthor("Đồng tác giả"),
+          ...emptyAuthor(),
           hoTen: name,
           donVi: initiative.donVi,
         })),
@@ -428,17 +489,25 @@ export function useInitiativeForm({
     });
     setEditingId(initiative.id);
     setAuthorMode(authors.length > 1 ? "team" : "solo");
+    setFieldErrors({});
+    setFinalDocxFile(null);
     setFormMessage("Đang chỉnh sửa sáng kiến đã chọn.");
   }
 
   async function exportDocx() {
+    if (!applyValidation(validateForm(form, null))) return;
+
     const thoiGian = deriveThoiGian();
+    const authors = form.danhSachTacGia.map((author) => ({
+      ...author,
+      vaiTro: AUTHOR_ROLE,
+    }));
 
     const fd = new FormData();
     fd.append("ten", form.ten);
     fd.append("linhVuc", form.linhVuc);
     fd.append("thoiGian", thoiGian);
-    fd.append("danhSachTacGia", JSON.stringify(form.danhSachTacGia));
+    fd.append("danhSachTacGia", JSON.stringify(authors));
     fd.append("lyDo", form.lyDo);
     fd.append("mucTieu", form.mucTieu);
     fd.append("thucTrang", form.thucTrang);
@@ -464,10 +533,10 @@ export function useInitiativeForm({
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = "sang-kien-preview.docx";
+      link.download = "dang-ky-sang-kien.docx";
       link.click();
       URL.revokeObjectURL(url);
-      setFormMessage("Đã xuất file DOCX theo biểu mẫu thành công.");
+      setFormMessage("Đã xuất tệp đăng ký. Bạn có thể chỉnh sửa và tải lên bản cuối cùng.");
     } catch {
       setFormMessage("Không thể kết nối server để xuất DOCX.");
     }
@@ -476,9 +545,11 @@ export function useInitiativeForm({
   return {
     form,
     formMessage,
+    fieldErrors,
     editingId,
     isSubmitting,
     authorMode,
+    finalDocxFile,
     updateForm,
     handleModeChange,
     updateAuthor,
@@ -490,5 +561,7 @@ export function useInitiativeForm({
     prefillFormFromSuggestion,
     exportDocx,
     startEdit,
+    setFinalDocx,
+    clearFinalDocx,
   };
 }

@@ -1,6 +1,6 @@
 import type { Initiative } from "@/lib/types";
 
-import { get, postForm, postJson } from "./client";
+import { get, postForm, postJson, putJson } from "./client";
 
 export type InitiativeFilters = {
   page?: number;
@@ -30,11 +30,11 @@ export async function fetchInitiatives(
     trangThai: filters.trangThai,
     searchQuery: filters.searchQuery,
   };
-  return get<InitiativeListResponse>("/api/v1/initiatives", params);
+  return get<InitiativeListResponse>("/api/v1/initiatives/", params);
 }
 
 export async function submitInitiative(formData: FormData): Promise<Initiative> {
-  return postForm<Initiative>("/api/v1/initiatives", formData);
+  return postForm<Initiative>("/api/v1/initiatives/", formData);
 }
 
 export async function likeInitiative(id: number): Promise<Initiative> {
@@ -47,4 +47,8 @@ export async function exportDocx(id: number): Promise<string> {
     {},
   );
   return result.downloadUrl;
+}
+
+export async function approveInitiative(id: number): Promise<Initiative> {
+  return putJson<Initiative>(`/api/v1/admin/initiatives/${id}/approve`, {});
 }

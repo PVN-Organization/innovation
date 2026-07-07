@@ -31,6 +31,9 @@ const localBindingConfig = {
     : [],
 };
 
+const backendTarget =
+  process.env.VITE_BACKEND_URL ?? process.env.BACKEND_URL ?? "http://localhost:10004";
+
 export default defineConfig({
   plugins: [
     vinext(),
@@ -40,4 +43,12 @@ export default defineConfig({
       config: localBindingConfig,
     }),
   ],
+  server: {
+    proxy: {
+      "/api": {
+        target: backendTarget,
+        changeOrigin: true,
+      },
+    },
+  },
 });

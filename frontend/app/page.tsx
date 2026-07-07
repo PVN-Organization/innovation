@@ -2,6 +2,7 @@
 
 import {
   FormEvent,
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -9,7 +10,7 @@ import type { ReactElement, ReactNode, SVGProps } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useInitiativeForm, DEPARTMENTS } from "@/hooks/useInitiativeForm";
-import type { AuthorMode } from "@/hooks/useInitiativeForm";
+import type { AuthorMode, FormFieldErrors } from "@/hooks/useInitiativeForm";
 import { useInitiatives } from "@/hooks/useInitiatives";
 import type { AuthorEntry, Field, FormState, Initiative, Status } from "@/lib/types";
 
@@ -184,17 +185,18 @@ function buildDonutGradient(fieldCounts: readonly (readonly [Field, number])[]) 
 }
 
 export default function Home() {
-  const { user: authUser } = useAuth();
+  const { user: authUser, loading: authLoading, login, logout: authLogout } = useAuth();
   const {
     initiatives,
+    isLoading: initiativesLoading,
+    error: initiativesError,
     optimisticLike,
     refresh: refreshInitiatives,
-    addLocal,
     updateLocal,
+    approveInitiative,
   } = useInitiatives();
 
-  const [demoRole, setRole] = useState<Role>("guest");
-  const role: Role = authUser?.is_admin ? "admin" : authUser ? "employee" : demoRole;
+  const role: Role = authUser?.is_admin ? "admin" : authUser ? "employee" : "guest";
   const [view, setView] = useState<View>("landing");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [selectedDepartment, setSelectedDepartment] = useState("Tất cả");
@@ -210,7 +212,8 @@ export default function Home() {
   const [initiativeMode, setInitiativeMode] = useState<"list" | "form">("list");
   const [selectedInitiative, setSelectedInitiative] = useState<Initiative | null>(null);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
-  const [showWordPreview, setShowWordPreview] = useState(false);
+  const [authNotice, setAuthNotice] = useState<string | null>(null);
+  const [adminNotice, setAdminNotice] = useState<string | null>(null);
   const [tablePulse, setTablePulse] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState("");
@@ -224,8 +227,10 @@ export default function Home() {
   const {
     form,
     formMessage,
+    fieldErrors,
     editingId,
     authorMode,
+    finalDocxFile,
     updateForm,
     handleModeChange,
     updateAuthor,
@@ -237,9 +242,9 @@ export default function Home() {
     exportDocx,
     startEdit,
     prefillFormFromSuggestion,
+    setFinalDocx,
+    clearFinalDocx,
   } = useInitiativeForm({
-    initiatives,
-    addLocal,
     updateLocal,
     refreshInitiatives,
     onCancel: () => {
@@ -247,8 +252,16 @@ export default function Home() {
       setInitiativeMode("list");
     },
   });
-  const isAuthed = role !== "guest";
-  const isAdmin = role === "admin";
+  const isAuthed = Boolean(authUser);
+  const isAdmin = Boolean(authUser?.is_admin);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const authError = params.get("auth_error");
+    if (!authError) return;
+    setAuthNotice("Đăng nhập không thành công. Vui lòng thử lại bằng tài khoản Tập đoàn.");
+    window.history.replaceState({}, "", window.location.pathname);
+  }, []);
 
   function requireAuth() {
     if (isAuthed) return true;
@@ -396,25 +409,32 @@ export default function Home() {
     if (targetView) setView(targetView);
   }
 
-  function loginAdmin() {
-    setRole("admin");
-    setView("admin");
-    setMobileOpen(false);
-    setChatOpen(false);
-  }
-
-  function loginEmployee() {
-    setRole("employee");
+  function handleLogin() {
     setShowLoginPrompt(false);
     setMobileOpen(false);
+    login();
   }
 
-  function logout() {
-    setRole("guest");
+  async function handleLogout() {
+    await authLogout();
     setView("landing");
     setMobileOpen(false);
     setSelectedInitiative(null);
     setChatOpen(false);
+    setAdminNotice(null);
+  }
+
+  async function handleApprove(id: number) {
+    setAdminNotice(null);
+    try {
+      const updated = await approveInitiative(id);
+      setSelectedInitiative((item) => (item?.id === id ? updated : item));
+      setAdminNotice("Đã duyệt sáng kiến thành công.");
+    } catch (err) {
+      setAdminNotice(
+        err instanceof Error ? err.message : "Không thể duyệt sáng kiến. Vui lòng thử lại.",
+      );
+    }
   }
 
   function openDetails(item: Initiative) {
@@ -578,15 +598,31 @@ export default function Home() {
 
   return (
     <main className="app-shell text-[var(--navy-900)]">
+      {(authLoading || initiativesLoading) && (
+        <div className="fixed inset-x-0 top-16 z-50 bg-[var(--navy-900)] px-4 py-2 text-center text-sm font-bold text-white lg:top-[76px]">
+          Đang tải dữ liệu...
+        </div>
+      )}
+      {authNotice && (
+        <div className="fixed inset-x-0 top-16 z-50 bg-[var(--gold-500)] px-4 py-2 text-center text-sm font-bold text-[var(--navy-900)] lg:top-[76px]">
+          {authNotice}
+          <button className="ml-3 underline" onClick={() => setAuthNotice(null)}>Đóng</button>
+        </div>
+      )}
+      {initiativesError && (
+        <div className="fixed inset-x-0 top-16 z-50 bg-red-600 px-4 py-2 text-center text-sm font-bold text-white lg:top-[76px]">
+          {initiativesError}
+        </div>
+      )}
       <Navigation
         role={role}
+        userName={authUser?.name}
         view={view}
         mobileOpen={mobileOpen}
         setMobileOpen={setMobileOpen}
-        login={loginEmployee}
-        loginAdmin={loginAdmin}
+        login={handleLogin}
         startCreate={startCreate}
-        logout={logout}
+        logout={handleLogout}
         go={go}
       />
 
@@ -621,6 +657,7 @@ export default function Home() {
           items={detailedFiltered}
           form={form}
           formMessage={formMessage}
+          fieldErrors={fieldErrors}
           editingId={editingId}
           selectedDepartment={selectedDepartment}
           selectedField={selectedField}
@@ -641,11 +678,13 @@ export default function Home() {
           submitInitiative={submitInitiative}
           exportDocx={exportDocx}
           clearForm={clearForm}
+          finalDocxFile={finalDocxFile}
+          setFinalDocx={setFinalDocx}
+          clearFinalDocx={clearFinalDocx}
           openDetails={openDetails}
           likeInitiative={likeInitiative}
           editInitiative={editInitiative}
-          showWordPreview={() => setShowWordPreview(true)}
-          login={loginEmployee}
+          login={handleLogin}
           tablePulse={tablePulse}
         />
       )}
@@ -676,7 +715,7 @@ export default function Home() {
           openDetails={openDetails}
           likeInitiative={likeInitiative}
           applyChartFilter={applyChartFilter}
-          login={loginEmployee}
+          login={handleLogin}
           tablePulse={tablePulse}
         />
       )}
@@ -689,13 +728,14 @@ export default function Home() {
             if (!requireAuth()) return;
             setChatOpen(true);
           }}
-          login={loginEmployee}
+          login={handleLogin}
         />
       )}
 
       {view === "admin" && isAdmin && (
         <AdminPortal
           items={adminItems}
+          notice={adminNotice}
           department={adminDepartment}
           field={adminField}
           status={adminStatus}
@@ -706,10 +746,7 @@ export default function Home() {
           setSearchQuery={setAdminSearch}
           exportCsv={exportCsv}
           openDetails={openDetails}
-          changeStatus={(id, status) => {
-            updateLocal(id, { trangThai: status });
-            setSelectedInitiative((item) => (item?.id === id ? { ...item, trangThai: status } : item));
-          }}
+          onApprove={handleApprove}
         />
       )}
 
@@ -723,14 +760,10 @@ export default function Home() {
         />
       )}
 
-      {showWordPreview && (
-        <WordPreview form={form} close={() => setShowWordPreview(false)} exportDocx={exportDocx} />
-      )}
-
       {showLoginPrompt && (
         <LoginPrompt
           close={() => setShowLoginPrompt(false)}
-          login={loginEmployee}
+          login={handleLogin}
         />
       )}
 
@@ -756,31 +789,33 @@ export default function Home() {
 
 function Navigation({
   role,
+  userName,
   view,
   mobileOpen,
   setMobileOpen,
   login,
-  loginAdmin,
   startCreate,
   logout,
   go,
 }: {
   role: Role;
+  userName?: string;
   view: View;
   mobileOpen: boolean;
   setMobileOpen: (value: boolean) => void;
   login: () => void;
-  loginAdmin: () => void;
   startCreate: () => void;
   logout: () => void;
   go: (view: View) => void;
 }) {
   const isAdmin = role === "admin";
   const isGuest = role === "guest";
-  const roleLabel = isAdmin ? "Quản trị viên" : role === "employee" ? "Tài khoản Tập đoàn" : "Chưa đăng nhập";
+  const roleLabel = isGuest
+    ? "Chưa đăng nhập"
+    : userName || (isAdmin ? "Quản trị viên" : "Tài khoản Tập đoàn");
   const navItems: { id: View; label: string; icon: LucideIcon; visible: boolean }[] = [
     { id: "landing", label: "Trang chủ", icon: HomeIcon, visible: true },
-    { id: "initiatives", label: "Sáng kiến", icon: PenLine, visible: true },
+    { id: "initiatives", label: "Sáng kiến", icon: PenLine, visible: false },
     { id: "competition", label: "Thi đua & Thống kê", icon: Trophy, visible: true },
     { id: "guide", label: "Hướng dẫn", icon: BookOpen, visible: true },
     { id: "admin", label: "Quản trị", icon: ShieldCheck, visible: isAdmin },
@@ -803,7 +838,7 @@ function Navigation({
           <img src="/logo-pvn.png" alt="Petrovietnam" className="h-10 w-auto object-contain" />
           <span className="min-w-0 leading-tight">
             <span className="block whitespace-nowrap text-[11px] font-black uppercase text-[var(--green-600)] sm:text-xs">
-              Công đoàn Công ty Mẹ
+              Công đoàn Bộ máy QL&ĐH Petrovietnam
             </span>
             <span className="block whitespace-nowrap text-sm font-black uppercase text-[var(--green-600)] sm:text-base">
               Cổng thông tin sáng kiến
@@ -850,18 +885,9 @@ function Navigation({
             </>
           ) : (
             <>
-              <span className="rounded-md bg-white px-3 py-2 text-sm font-bold text-[var(--muted)]">
+              <span className="max-w-[220px] truncate rounded-md bg-white px-3 py-2 text-sm font-bold text-[var(--muted)]" title={roleLabel}>
                 {roleLabel}
               </span>
-              {!isAdmin && (
-                <button
-                  className="hidden rounded-md border border-[var(--line)] bg-white px-3 py-2 text-xs font-black text-[var(--muted)] 2xl:block"
-                  onClick={loginAdmin}
-                  title="Prototype: chuyển sang Admin"
-                >
-                  Admin
-                </button>
-              )}
               <button
                 className="whitespace-nowrap rounded-md bg-[var(--green-600)] px-3 py-2 text-sm font-black text-white shadow-md shadow-[var(--green-600)]/20"
                 onClick={handleCreate}
@@ -919,17 +945,9 @@ function Navigation({
                 <button className="rounded-md bg-[var(--green-600)] px-4 py-3 text-sm font-black text-white" onClick={login}>
                   Đăng nhập tài khoản Tập đoàn
                 </button>
-                <button className="rounded-md border border-[var(--line)] px-4 py-3 text-sm font-black text-[var(--muted)]" onClick={loginAdmin}>
-                  Đăng nhập Admin
-                </button>
               </div>
             ) : (
               <div className="mt-2 grid gap-2">
-                {!isAdmin && (
-                  <button className="rounded-md border border-[var(--line)] px-4 py-3 text-sm font-black text-[var(--muted)]" onClick={loginAdmin}>
-                    Chuyển sang Admin
-                  </button>
-                )}
                 <button className="rounded-md bg-[var(--green-600)] px-4 py-3 text-sm font-black text-white" onClick={handleCreate}>
                   Tạo sáng kiến
                 </button>
@@ -992,13 +1010,13 @@ function LandingPage({
         <div className="app-container relative z-10 pb-16 pt-24 sm:pb-20 sm:pt-28 lg:pb-24 lg:pt-32">
           <div className="max-w-[760px]">
             <p className="mb-3 w-fit rounded-full bg-white/80 px-4 py-2 text-xs font-black uppercase text-[var(--green-700)] shadow-sm">
-              Cổng thông tin sáng kiến Công đoàn Công ty Mẹ
+              Cổng thông tin sáng kiến Công đoàn Bộ máy QL&ĐH Petrovietnam
             </p>
             <h1 className="campaign-title text-balance text-[2.75rem] font-black leading-[0.98] text-[var(--navy-900)] sm:text-6xl lg:text-[5rem]">
               Ý tưởng hôm nay, giá trị ngày mai
             </h1>
             <p className="mt-5 max-w-xl text-base font-semibold leading-8 text-[var(--navy-800)] sm:text-lg">
-              Đóng góp ý tưởng, tìm cảm hứng với AI, lan tỏa thi đua đổi mới trong Công ty Mẹ.
+              Đóng góp ý tưởng, tìm cảm hứng với AI, lan tỏa thi đua đổi mới trong Bộ máy QL&ĐH Petrovietnam.
             </p>
             <div className="mt-7 grid max-w-xl grid-cols-2 gap-3 sm:grid-cols-4">
               <CampaignMetric icon={Lightbulb} value={String(initiatives.length)} label="Sáng kiến" color="var(--green-600)" />
@@ -1299,6 +1317,7 @@ function InitiativesPage({
   items,
   form,
   formMessage,
+  fieldErrors,
   editingId,
   selectedDepartment,
   selectedField,
@@ -1319,10 +1338,12 @@ function InitiativesPage({
   submitInitiative,
   exportDocx,
   clearForm,
+  finalDocxFile,
+  setFinalDocx,
+  clearFinalDocx,
   openDetails,
   likeInitiative,
   editInitiative,
-  showWordPreview,
   login,
   tablePulse,
 }: {
@@ -1332,6 +1353,7 @@ function InitiativesPage({
   items: Initiative[];
   form: FormState;
   formMessage: string;
+  fieldErrors: FormFieldErrors;
   editingId: number | null;
   selectedDepartment: string;
   selectedField: string;
@@ -1352,10 +1374,12 @@ function InitiativesPage({
   submitInitiative: (event: FormEvent<HTMLFormElement>) => void;
   exportDocx: () => void;
   clearForm: () => void;
+  finalDocxFile: File | null;
+  setFinalDocx: (file: File | null) => void;
+  clearFinalDocx: () => void;
   openDetails: (item: Initiative) => void;
   likeInitiative: (id: number) => void;
   editInitiative: (item: Initiative) => void;
-  showWordPreview: () => void;
   login: () => void;
   tablePulse: boolean;
 }) {
@@ -1379,10 +1403,11 @@ function InitiativesPage({
 
   if (mode === "form") {
     return (
-      <PageFrame eyebrow="Trình tạo Sáng kiến" title={editingId ? "Chỉnh sửa sáng kiến" : "Biểu mẫu đăng ký sáng kiến"} variant="campaign">
+      <PageFrame eyebrow="Sáng kiến" title={editingId ? "Chỉnh sửa sáng kiến" : "Biểu mẫu đăng ký sáng kiến"} variant="campaign">
         <InitiativeForm
           form={form}
           formMessage={formMessage}
+          fieldErrors={fieldErrors}
           editingId={editingId}
           updateForm={updateForm}
           authorMode={authorMode}
@@ -1393,7 +1418,9 @@ function InitiativesPage({
           submitInitiative={submitInitiative}
           exportDocx={exportDocx}
           clearForm={clearForm}
-          showWordPreview={showWordPreview}
+          finalDocxFile={finalDocxFile}
+          setFinalDocx={setFinalDocx}
+          clearFinalDocx={clearFinalDocx}
           backToList={() => setMode("list")}
         />
       </PageFrame>
@@ -1626,7 +1653,7 @@ function CompetitionPage({
   ];
 
   return (
-    <PageFrame eyebrow="Thi đua & Thống kê" title="Phong trào sáng kiến Công đoàn Công ty Mẹ" variant="campaign">
+    <PageFrame eyebrow="Thi đua & Thống kê" title="Phong trào sáng kiến Công đoàn Bộ máy QL&ĐH Petrovietnam" variant="campaign">
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="max-w-2xl text-sm leading-6 text-[var(--muted)]">Theo dõi sức nóng phong trào, các chỉ số đổi mới và bảng xếp hạng thi đua trong một không gian thống nhất.</p>
         {isAuthed ? (
@@ -1839,7 +1866,7 @@ function GuidePage({
   const steps = [
     { title: "Tìm cảm hứng", text: "Xem thống kê, bảng thi đua và các sáng kiến được quan tâm." },
     { title: "Tạo sáng kiến", text: "Điền form ngắn gọn, thêm đồng tác giả và mô tả hiệu quả dự kiến." },
-    { title: "Xuất DOCX / Gửi duyệt", text: "Xem preview bản Word, tải DOCX và gửi dữ liệu vào kho quản trị." },
+    { title: "Xuất tệp / Gửi duyệt", text: "Xuất tệp đăng ký, chỉnh sửa offline, tải lên bản cuối cùng và gửi vào kho quản trị." },
   ];
   const faqs = [
     ["Ai được gửi sáng kiến?", "Công đoàn viên và người lao động sử dụng tài khoản Tập đoàn trong prototype."],
@@ -1893,6 +1920,7 @@ function GuidePage({
 
 function AdminPortal({
   items,
+  notice,
   department,
   field,
   status,
@@ -1903,9 +1931,10 @@ function AdminPortal({
   setSearchQuery,
   exportCsv,
   openDetails,
-  changeStatus,
+  onApprove,
 }: {
   items: Initiative[];
+  notice: string | null;
   department: string;
   field: string;
   status: string;
@@ -1916,7 +1945,7 @@ function AdminPortal({
   setSearchQuery: (value: string) => void;
   exportCsv: () => void;
   openDetails: (item: Initiative) => void;
-  changeStatus: (id: number, status: Status) => void;
+  onApprove: (id: number) => void;
 }) {
   const approved = items.filter((item) => item.trangThai === "Đã duyệt").length;
   const interests = items.reduce((sum, item) => sum + item.quanTam, 0);
@@ -1924,6 +1953,11 @@ function AdminPortal({
 
   return (
     <PageFrame eyebrow="Admin Portal" title="Kho dữ liệu Sáng kiến">
+      {notice && (
+        <div className="mb-4 rounded-lg border border-[var(--line)] bg-[var(--mist)] px-4 py-3 text-sm font-bold text-[var(--navy-800)]">
+          {notice}
+        </div>
+      )}
       <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile icon={FileText} value={String(items.length)} label="Sáng kiến trong kho" caption="Theo bộ lọc hiện tại" color="var(--blue-700)" card />
         <StatTile icon={ShieldCheck} value={String(approved)} label="Đã duyệt" caption="Có thể lan tỏa" color="var(--green-600)" card />
@@ -1967,9 +2001,13 @@ function AdminPortal({
                     <td className="px-4 py-3">
                       <div className="flex gap-2">
                         <button className="rounded-md bg-[var(--blue-100)] px-3 py-2 text-xs font-black text-[var(--blue-700)]" onClick={() => openDetails(item)}>Xem</button>
-                        <button className="rounded-md bg-[var(--green-100)] px-3 py-2 text-xs font-black text-[var(--green-700)]" onClick={() => changeStatus(item.id, item.trangThai === "Đã duyệt" ? "Chờ duyệt" : "Đã duyệt")}>
-                          {item.trangThai === "Đã duyệt" ? "Chờ duyệt" : "Duyệt"}
-                        </button>
+                        {item.trangThai === "Chờ duyệt" ? (
+                          <button className="rounded-md bg-[var(--green-100)] px-3 py-2 text-xs font-black text-[var(--green-700)]" onClick={() => onApprove(item.id)}>
+                            Duyệt
+                          </button>
+                        ) : (
+                          <span className="rounded-md bg-[var(--mist)] px-3 py-2 text-xs font-black text-[var(--muted)]">Đã duyệt</span>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1989,9 +2027,13 @@ function AdminPortal({
                 </div>
                 <div className="mt-4 grid grid-cols-2 gap-2">
                   <button className="rounded-md bg-[var(--blue-100)] px-3 py-2 text-xs font-black text-[var(--blue-700)]" onClick={() => openDetails(item)}>Xem chi tiết</button>
-                  <button className="rounded-md bg-[var(--green-100)] px-3 py-2 text-xs font-black text-[var(--green-700)]" onClick={() => changeStatus(item.id, item.trangThai === "Đã duyệt" ? "Chờ duyệt" : "Đã duyệt")}>
-                    {item.trangThai === "Đã duyệt" ? "Chờ duyệt" : "Duyệt"}
-                  </button>
+                  {item.trangThai === "Chờ duyệt" ? (
+                    <button className="rounded-md bg-[var(--green-100)] px-3 py-2 text-xs font-black text-[var(--green-700)]" onClick={() => onApprove(item.id)}>
+                      Duyệt
+                    </button>
+                  ) : (
+                    <span className="grid place-items-center rounded-md bg-[var(--mist)] px-3 py-2 text-xs font-black text-[var(--muted)]">Đã duyệt</span>
+                  )}
                 </div>
               </div>
             ))}
@@ -2007,9 +2049,52 @@ function AdminPortal({
   );
 }
 
+function inputClass(hasError: boolean) {
+  return `w-full rounded-md border bg-white px-4 py-3 text-base outline-none transition focus:ring-4 ${
+    hasError
+      ? "border-red-500 focus:border-red-500 focus:ring-red-100"
+      : "border-[var(--line)] focus:border-[var(--green-600)] focus:ring-[var(--green-100)]"
+  }`;
+}
+
+function FormField({
+  label,
+  error,
+  children,
+}: {
+  label: string;
+  error?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col">
+      <span className="text-sm font-black text-[var(--navy-900)]">{label}</span>
+      <div className="mt-2">{children}</div>
+      <FieldError message={error} />
+    </div>
+  );
+}
+
+function FormSectionHeader({ title }: { title: string }) {
+  return (
+    <div className="border-y border-[var(--line)] bg-white px-5 py-5 sm:px-7">
+      <h3 className="text-xl font-black text-[var(--navy-900)]">{title}</h3>
+    </div>
+  );
+}
+
+function FieldError({ message }: { message?: string }) {
+  return (
+    <p className={`mt-1 min-h-[18px] text-xs font-bold ${message ? "text-red-600" : "text-transparent"}`}>
+      {message || "placeholder"}
+    </p>
+  );
+}
+
 function InitiativeForm({
   form,
   formMessage,
+  fieldErrors,
   editingId,
   updateForm,
   authorMode,
@@ -2020,11 +2105,14 @@ function InitiativeForm({
   submitInitiative,
   exportDocx,
   clearForm,
-  showWordPreview,
+  finalDocxFile,
+  setFinalDocx,
+  clearFinalDocx,
   backToList,
 }: {
   form: FormState;
   formMessage: string;
+  fieldErrors: FormFieldErrors;
   editingId: number | null;
   updateForm: (key: keyof FormState, value: string) => void;
   authorMode: AuthorMode;
@@ -2035,7 +2123,9 @@ function InitiativeForm({
   submitInitiative: (event: FormEvent<HTMLFormElement>) => void;
   exportDocx: () => void;
   clearForm: () => void;
-  showWordPreview: () => void;
+  finalDocxFile: File | null;
+  setFinalDocx: (file: File | null) => void;
+  clearFinalDocx: () => void;
   backToList: () => void;
 }) {
   const formSteps = [
@@ -2044,7 +2134,7 @@ function InitiativeForm({
       done: Boolean(form.ten.trim() && form.email.trim() && form.donVi),
     },
     {
-      title: "Tác giả",
+      title: "Thông tin tác giả",
       done: form.danhSachTacGia.every((author) => author.hoTen.trim()),
     },
     {
@@ -2053,22 +2143,34 @@ function InitiativeForm({
     },
     {
       title: "Hiệu quả",
-      done: Boolean(form.hieuQua.trim() && form.tinhMoi.trim()),
+      done: Boolean(form.hieuQua.trim()),
     },
     {
-      title: "Preview/Gửi",
-      done: formMessage.startsWith("Đã gửi") || formMessage.startsWith("Đã cập nhật"),
+      title: "Xuất/Gửi",
+      done: formMessage.startsWith("Đã gửi") || formMessage.startsWith("Đã cập nhật") || formMessage.startsWith("Đã xuất"),
     },
+  ];
+
+  const contentFields: { key: keyof FormState; label: string; placeholder: string }[] = [
+    { key: "lyDo", label: "Lý do đề xuất", placeholder: "Vấn đề, nhu cầu hoặc cơ hội cải tiến cần được giải quyết..." },
+    { key: "mucTieu", label: "Mục tiêu", placeholder: "Mục tiêu cụ thể của sáng kiến..." },
+    { key: "thucTrang", label: "Thực trạng", placeholder: "Mô tả quy trình, dữ liệu hoặc tình huống hiện tại..." },
+    { key: "giaiPhap", label: "Giải pháp mới", placeholder: "Nêu giải pháp, điểm mới, công nghệ hoặc cách làm đề xuất..." },
+    { key: "cachThuc", label: "Cách thức áp dụng", placeholder: "Các bước triển khai, phạm vi áp dụng và đơn vị phối hợp..." },
+    { key: "tomTat", label: "Nội dung tóm tắt", placeholder: "Tóm tắt ngắn để hiển thị trên dashboard..." },
+  ];
+
+  const effectivenessFields: { key: keyof FormState; label: string; placeholder: string }[] = [
+    { key: "hieuQua", label: "Hiệu quả dự kiến", placeholder: "Hiệu quả về chi phí, thời gian, an toàn, môi trường hoặc chất lượng phục vụ đoàn viên..." },
+    { key: "tinhMoi", label: "Tính mới", placeholder: "Điểm khác biệt so với cách làm hiện tại..." },
+    { key: "nhanRong", label: "Khả năng nhân rộng", placeholder: "Điều kiện và phạm vi có thể nhân rộng..." },
   ];
 
   return (
     <section>
       <form className="card overflow-hidden" onSubmit={submitInitiative}>
         <div className="border-b border-[var(--line)] bg-white px-5 py-5 sm:px-7">
-          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-            <h3 className="text-xl font-black text-[var(--navy-900)]">Thông tin chung</h3>
-            <StatusBadge status="Chờ duyệt" />
-          </div>
+          <h3 className="text-xl font-black text-[var(--navy-900)]">Thông tin chung</h3>
         </div>
 
         <div className="border-b border-[var(--line)] bg-[var(--mist)] px-5 py-4 sm:px-7">
@@ -2090,11 +2192,12 @@ function InitiativeForm({
           <label className="block md:col-span-2">
             <span className="text-sm font-black text-[var(--navy-900)]">Tên sáng kiến</span>
             <input
-              className="mt-2 w-full rounded-md border border-[var(--line)] bg-white px-4 py-3 text-base outline-none transition focus:border-[var(--green-600)] focus:ring-4 focus:ring-[var(--green-100)]"
+              className={`mt-2 ${inputClass(Boolean(fieldErrors.ten))}`}
               value={form.ten}
               onChange={(event) => updateForm("ten", event.target.value)}
               placeholder="Ví dụ: Tối ưu tiêu thụ năng lượng tại văn phòng"
             />
+            <FieldError message={fieldErrors.ten} />
           </label>
 
           <label className="block">
@@ -2130,18 +2233,19 @@ function InitiativeForm({
           <label className="block">
             <span className="text-sm font-black text-[var(--navy-900)]">Email liên hệ</span>
             <input
-              className="mt-2 w-full rounded-md border border-[var(--line)] bg-white px-4 py-3 text-base outline-none transition focus:border-[var(--green-600)] focus:ring-4 focus:ring-[var(--green-100)]"
+              className={`mt-2 ${inputClass(Boolean(fieldErrors.email))}`}
               value={form.email}
               onChange={(event) => updateForm("email", event.target.value)}
               placeholder="name@pvn.vn"
               type="email"
             />
+            <FieldError message={fieldErrors.email} />
           </label>
 
           <label className="block">
             <span className="text-sm font-black text-[var(--navy-900)]">Thời gian bắt đầu</span>
             <input
-              className="mt-2 w-full rounded-md border border-[var(--line)] bg-white px-4 py-3 text-base outline-none transition focus:border-[var(--green-600)] focus:ring-4 focus:ring-[var(--green-100)]"
+              className={`mt-2 ${inputClass(Boolean(fieldErrors.thoiGian))}`}
               value={form.thoiGianTu}
               onChange={(event) => updateForm("thoiGianTu", event.target.value)}
               type="date"
@@ -2151,19 +2255,20 @@ function InitiativeForm({
           <label className="block">
             <span className="text-sm font-black text-[var(--navy-900)]">Thời gian kết thúc</span>
             <input
-              className="mt-2 w-full rounded-md border border-[var(--line)] bg-white px-4 py-3 text-base outline-none transition focus:border-[var(--green-600)] focus:ring-4 focus:ring-[var(--green-100)]"
+              className={`mt-2 ${inputClass(Boolean(fieldErrors.thoiGian))}`}
               value={form.thoiGianDen}
               onChange={(event) => updateForm("thoiGianDen", event.target.value)}
               type="date"
             />
+            <FieldError message={fieldErrors.thoiGian} />
           </label>
         </div>
 
         <div className="border-y border-[var(--line)] bg-[var(--mist)] px-5 py-6 sm:px-7">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h3 className="text-xl font-black text-[var(--navy-900)]">Tác giả và đơn vị</h3>
-              <p className="mt-1 text-sm font-semibold text-[var(--muted)]">Chọn cá nhân hoặc nhóm đồng tác giả cho sáng kiến.</p>
+              <h3 className="text-xl font-black text-[var(--navy-900)]">Thông tin tác giả</h3>
+              <p className="mt-1 text-sm font-semibold text-[var(--muted)]">Chọn cá nhân hoặc nhóm tác giả cho sáng kiến.</p>
             </div>
             <div className="inline-grid w-full grid-cols-2 rounded-lg border border-[var(--line)] bg-white p-1 sm:w-auto">
               <button
@@ -2185,29 +2290,29 @@ function InitiativeForm({
 
           <div className="mt-5 grid gap-4">
             {form.danhSachTacGia.map((author, index) => (
-              <div key={index} className="grid gap-3 rounded-lg border border-[var(--line)] bg-white p-4 md:grid-cols-2">
-                <label className="block">
-                  <span className="text-sm font-black text-[var(--navy-900)]">{index === 0 ? "Tác giả chính" : `Đồng tác giả ${index}`}</span>
+              <div key={index} className="grid gap-4 rounded-lg border border-[var(--line)] bg-white p-4 md:grid-cols-2 md:items-start">
+                <FormField
+                  label={authorMode === "solo" && index === 0 ? "Tác giả" : `Đồng tác giả ${index + 1}`}
+                  error={fieldErrors[`author.${index}.hoTen`]}
+                >
                   <input
-                    className="mt-2 w-full rounded-md border border-[var(--line)] bg-white px-4 py-3 text-base outline-none transition focus:border-[var(--green-600)] focus:ring-4 focus:ring-[var(--green-100)]"
+                    className={inputClass(Boolean(fieldErrors[`author.${index}.hoTen`]))}
                     value={author.hoTen}
                     onChange={(event) => updateAuthor(index, "hoTen", event.target.value)}
                     placeholder="Nhập họ và tên"
                   />
-                </label>
-                <label className="block">
-                  <span className="text-sm font-black text-[var(--navy-900)]">Chức vụ</span>
+                </FormField>
+                <FormField label="Chức vụ">
                   <input
-                    className="mt-2 w-full rounded-md border border-[var(--line)] bg-white px-4 py-3 text-base outline-none transition focus:border-[var(--green-600)] focus:ring-4 focus:ring-[var(--green-100)]"
+                    className={inputClass(false)}
                     value={author.chucVu}
                     onChange={(event) => updateAuthor(index, "chucVu", event.target.value)}
                     placeholder="Ví dụ: Chuyên viên"
                   />
-                </label>
-                <label className="block">
-                  <span className="text-sm font-black text-[var(--navy-900)]">Đơn vị</span>
+                </FormField>
+                <FormField label="Đơn vị">
                   <select
-                    className="mt-2 w-full rounded-md border border-[var(--line)] bg-white px-4 py-3 text-base font-bold text-[var(--navy-800)] outline-none transition focus:border-[var(--green-600)] focus:ring-4 focus:ring-[var(--green-100)]"
+                    className={`${inputClass(false)} font-bold text-[var(--navy-800)]`}
                     value={author.donVi}
                     onChange={(event) => updateAuthor(index, "donVi", event.target.value)}
                   >
@@ -2218,12 +2323,11 @@ function InitiativeForm({
                       </option>
                     ))}
                   </select>
-                </label>
-                <label className="block">
-                  <span className="text-sm font-black text-[var(--navy-900)]">Email</span>
-                  <div className="mt-2 flex gap-2">
+                </FormField>
+                <FormField label="Email" error={fieldErrors[`author.${index}.email`]}>
+                  <div className="flex gap-2">
                     <input
-                      className="min-w-0 flex-1 rounded-md border border-[var(--line)] bg-white px-4 py-3 text-base outline-none transition focus:border-[var(--green-600)] focus:ring-4 focus:ring-[var(--green-100)]"
+                      className={`min-w-0 flex-1 ${inputClass(Boolean(fieldErrors[`author.${index}.email`]))}`}
                       value={author.email}
                       onChange={(event) => updateAuthor(index, "email", event.target.value)}
                       placeholder="name@pvn.vn"
@@ -2231,7 +2335,7 @@ function InitiativeForm({
                     />
                     {authorMode === "team" && index > 0 && (
                       <button
-                        className="rounded-md border border-[var(--line)] px-3 py-2 text-sm font-black text-[var(--navy-800)]"
+                        className="shrink-0 rounded-md border border-[var(--line)] px-3 py-2 text-sm font-black text-[var(--navy-800)]"
                         type="button"
                         onClick={() => removeAuthor(index)}
                       >
@@ -2239,7 +2343,7 @@ function InitiativeForm({
                       </button>
                     )}
                   </div>
-                </label>
+                </FormField>
               </div>
             ))}
             {authorMode === "team" && (
@@ -2254,61 +2358,74 @@ function InitiativeForm({
           </div>
         </div>
 
+        <FormSectionHeader title="Nội dung" />
         <div className="grid gap-5 px-5 py-6 sm:px-7">
-          <TextArea
-            label="Lý do đề xuất"
-            value={form.lyDo}
-            onChange={(value) => updateForm("lyDo", value)}
-            placeholder="Vấn đề, nhu cầu hoặc cơ hội cải tiến cần được giải quyết..."
-          />
-          <TextArea
-            label="Mục tiêu"
-            value={form.mucTieu}
-            onChange={(value) => updateForm("mucTieu", value)}
-            placeholder="Mục tiêu cụ thể của sáng kiến..."
-          />
-          <TextArea
-            label="Thực trạng"
-            value={form.thucTrang}
-            onChange={(value) => updateForm("thucTrang", value)}
-            placeholder="Mô tả quy trình, dữ liệu hoặc tình huống hiện tại..."
-          />
-          <TextArea
-            label="Giải pháp mới"
-            value={form.giaiPhap}
-            onChange={(value) => updateForm("giaiPhap", value)}
-            placeholder="Nêu giải pháp, điểm mới, công nghệ hoặc cách làm đề xuất..."
-          />
-          <TextArea
-            label="Cách thức áp dụng"
-            value={form.cachThuc}
-            onChange={(value) => updateForm("cachThuc", value)}
-            placeholder="Các bước triển khai, phạm vi áp dụng và đơn vị phối hợp..."
-          />
-          <TextArea
-            label="Nội dung tóm tắt"
-            value={form.tomTat}
-            onChange={(value) => updateForm("tomTat", value)}
-            placeholder="Tóm tắt ngắn để hiển thị trên dashboard..."
-          />
-          <TextArea
-            label="Hiệu quả dự kiến"
-            value={form.hieuQua}
-            onChange={(value) => updateForm("hieuQua", value)}
-            placeholder="Hiệu quả về chi phí, thời gian, an toàn, môi trường hoặc chất lượng phục vụ đoàn viên..."
-          />
-          <TextArea
-            label="Tính mới"
-            value={form.tinhMoi}
-            onChange={(value) => updateForm("tinhMoi", value)}
-            placeholder="Điểm khác biệt so với cách làm hiện tại..."
-          />
-          <TextArea
-            label="Khả năng nhân rộng"
-            value={form.nhanRong}
-            onChange={(value) => updateForm("nhanRong", value)}
-            placeholder="Điều kiện và phạm vi có thể nhân rộng..."
-          />
+          {contentFields.map(({ key, label, placeholder }) => (
+            <TextArea
+              key={key}
+              label={label}
+              value={form[key] as string}
+              onChange={(value) => updateForm(key, value)}
+              placeholder={placeholder}
+              error={fieldErrors[key]}
+            />
+          ))}
+        </div>
+
+        <FormSectionHeader title="Hiệu quả" />
+        <div className="grid gap-5 px-5 py-6 sm:px-7">
+          {effectivenessFields.map(({ key, label, placeholder }) => (
+            <TextArea
+              key={key}
+              label={label}
+              value={form[key] as string}
+              onChange={(value) => updateForm(key, value)}
+              placeholder={placeholder}
+              error={fieldErrors[key]}
+            />
+          ))}
+        </div>
+
+        <FormSectionHeader title="Xuất/Gửi" />
+        <div className="grid gap-5 px-5 py-6 sm:px-7">
+          <div className="rounded-xl border border-[var(--line)] bg-[var(--mist)] p-4">
+            <h4 className="text-sm font-black text-[var(--navy-900)]">Tệp đăng ký sáng kiến (bản cuối cùng)</h4>
+            <p className="mt-1 text-sm font-semibold text-[var(--muted)]">
+              Xuất tệp đăng ký, chỉnh sửa offline, sau đó tải lên bản cuối cùng trước khi gửi.
+            </p>
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+              <button
+                className="w-fit rounded-md bg-[var(--blue-700)] px-4 py-2 text-sm font-black text-white"
+                type="button"
+                onClick={exportDocx}
+              >
+                Xuất tệp đăng ký
+              </button>
+              <input
+                className="block w-full text-sm font-semibold text-[var(--navy-800)] file:mr-4 file:rounded-md file:border-0 file:bg-[var(--green-600)] file:px-4 file:py-2 file:text-sm file:font-black file:text-white sm:w-auto sm:min-w-[280px] sm:flex-1"
+                type="file"
+                accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                onChange={(event) => {
+                  const file = event.target.files?.[0] ?? null;
+                  setFinalDocx(file);
+                }}
+              />
+              {finalDocxFile && (
+                <div className="flex items-center gap-2 text-sm font-bold text-[var(--navy-800)]">
+                  <span className="truncate">{finalDocxFile.name}</span>
+                  <button
+                    className="rounded-md border border-[var(--line)] px-3 py-1 text-xs font-black"
+                    type="button"
+                    onClick={clearFinalDocx}
+                  >
+                    Xóa
+                  </button>
+                </div>
+              )}
+            </div>
+            <FieldError message={fieldErrors.finalDocx} />
+          </div>
+
           {formMessage && (
             <div className={`rounded-xl border p-4 text-sm font-bold ${formMessage.startsWith("Đã gửi") || formMessage.startsWith("Đã cập nhật") ? "border-[var(--green-500)] bg-[var(--green-100)] text-[var(--green-700)]" : "border-[var(--gold-500)] bg-[var(--gold-100)] text-[var(--navy-900)]"}`}>
               <p>{formMessage}</p>
@@ -2333,20 +2450,6 @@ function InitiativeForm({
             onClick={backToList}
           >
             Về danh sách
-          </button>
-          <button
-            className="rounded-md bg-[var(--navy-900)] px-5 py-3 text-sm font-black text-white"
-            type="button"
-            onClick={showWordPreview}
-          >
-            Xem preview bản Word
-          </button>
-          <button
-            className="rounded-md bg-[var(--blue-700)] px-5 py-3 text-sm font-black text-white"
-            type="button"
-            onClick={exportDocx}
-          >
-            Xuất File DOCX
           </button>
           <button
             className="rounded-md bg-[var(--green-600)] px-5 py-3 text-sm font-black text-white shadow-md shadow-[var(--green-600)]/20"
@@ -2914,11 +3017,13 @@ function TextArea({
   value,
   onChange,
   placeholder,
+  error,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
+  error?: string;
 }) {
   const append = (snippet: string) => {
     const spacer = value.trim().length > 0 && !value.endsWith("\n") ? "\n" : "";
@@ -2926,7 +3031,7 @@ function TextArea({
   };
 
   return (
-    <label className="mt-4 block">
+    <label className="block">
       <span className="flex items-center justify-between gap-3">
         <span className="text-sm font-black">{label}</span>
         <span className="flex shrink-0 gap-1 rounded-md border border-[var(--line)] bg-[var(--mist)] p-1">
@@ -2942,11 +3047,16 @@ function TextArea({
         </span>
       </span>
       <textarea
-        className="mt-2 min-h-32 w-full resize-y rounded-md border border-[var(--line)] bg-white px-3 py-3 text-sm leading-6 outline-none focus:border-[var(--green-600)] focus:ring-4 focus:ring-[var(--green-100)]"
+        className={`mt-2 min-h-32 w-full resize-y rounded-md border bg-white px-3 py-3 text-sm leading-6 outline-none focus:ring-4 ${
+          error
+            ? "border-red-500 focus:border-red-500 focus:ring-red-100"
+            : "border-[var(--line)] focus:border-[var(--green-600)] focus:ring-[var(--green-100)]"
+        }`}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
       />
+      <FieldError message={error} />
     </label>
   );
 }
@@ -3028,42 +3138,10 @@ function LoginPrompt({ close, login }: { close: () => void; login: () => void })
       <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
         <Lock className="h-9 w-9 text-[var(--green-600)]" />
         <h3 id="login-prompt-title" className="mt-4 text-2xl font-black">Cần đăng nhập tài khoản Tập đoàn</h3>
-        <p className="mt-2 text-sm leading-6 text-[var(--muted)]">Tạo sáng kiến, hỏi AI, xem chi tiết và bấm quan tâm là các chức năng dành cho người dùng đã đăng nhập.</p>
+        <p className="mt-2 text-sm leading-6 text-[var(--muted)]">Đăng nhập bằng tài khoản Microsoft/Azure AD của Tập đoàn để tạo sáng kiến, hỏi AI, xem chi tiết và bấm quan tâm.</p>
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
           <button className="rounded-md border border-[var(--line)] px-4 py-3 text-sm font-black" onClick={close}>Để sau</button>
           <button className="rounded-md bg-[var(--green-600)] px-4 py-3 text-sm font-black text-white" onClick={login}>Đăng nhập tài khoản Tập đoàn</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function WordPreview({ form, close, exportDocx }: { form: FormState; close: () => void; exportDocx: () => void }) {
-  const authors = form.danhSachTacGia
-    .map((author) => author.hoTen.trim())
-    .filter(Boolean)
-    .join("; ");
-
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-[var(--navy-950)]/65 p-4">
-      <div className="max-h-[92vh] w-full max-w-3xl overflow-auto rounded-xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-[var(--line)] p-4">
-          <h3 className="text-xl font-black">Preview bản Word</h3>
-          <button className="rounded-md border border-[var(--line)] px-3 py-2 text-sm font-black" onClick={close}>Đóng</button>
-        </div>
-        <div className="m-5 rounded-lg border border-[var(--line)] bg-white p-6 shadow-inner">
-          <p className="text-center text-sm font-black uppercase">Cổng thông tin sáng kiến Công đoàn Công ty Mẹ</p>
-          <h4 className="mt-6 text-xl font-black">{form.ten || "Tên sáng kiến chưa nhập"}</h4>
-          <p className="mt-2 text-sm text-[var(--muted)]">Lĩnh vực: {form.linhVuc} • Đơn vị: {form.donVi}</p>
-          <p className="mt-1 text-sm text-[var(--muted)]">Tác giả: {authors || "Chưa nhập"}</p>
-          <ContentBlock title="Lý do đề xuất" text={form.lyDo || "Chưa nhập"} />
-          <div className="mt-5"><ContentBlock title="Giải pháp mới" text={form.giaiPhap || "Chưa nhập"} /></div>
-          <div className="mt-5"><ContentBlock title="Hiệu quả dự kiến" text={form.hieuQua || "Chưa nhập"} /></div>
-        </div>
-        <div className="flex justify-end border-t border-[var(--line)] p-4">
-          <button className="rounded-md bg-[var(--navy-900)] px-4 py-3 text-sm font-black text-white" onClick={exportDocx}>
-            Tải file DOCX
-          </button>
         </div>
       </div>
     </div>
