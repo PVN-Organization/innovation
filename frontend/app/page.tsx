@@ -15,6 +15,20 @@ import type { AuthorEntry, Field, FormState, Initiative, Status } from "@/lib/ty
 
 type Role = "guest" | "employee" | "admin";
 type View = "landing" | "initiatives" | "stats" | "competition" | "guide" | "admin";
+type FilterKind = "department" | "field" | "status" | "author";
+type ChatSuggestion = {
+  title: string;
+  field: Field;
+  problem: string;
+  solution: string;
+  expectedImpact: string;
+  prefill: Partial<FormState>;
+};
+type ChatMessage = {
+  from: "bot" | "user";
+  text: string;
+  suggestions?: ChatSuggestion[];
+};
 type IconProps = SVGProps<SVGSVGElement>;
 type LucideIcon = (props: IconProps) => ReactElement;
 
@@ -172,14 +186,16 @@ export default function Home() {
   const [adminDepartment, setAdminDepartment] = useState("Tất cả");
   const [adminField, setAdminField] = useState("Tất cả");
   const [adminStatus, setAdminStatus] = useState("Tất cả");
+  const [adminSearch, setAdminSearch] = useState("");
   const [range, setRange] = useState("Tháng này");
   const [initiativeMode, setInitiativeMode] = useState<"list" | "form">("list");
   const [selectedInitiative, setSelectedInitiative] = useState<Initiative | null>(null);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   const [showWordPreview, setShowWordPreview] = useState(false);
+  const [tablePulse, setTablePulse] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState("");
-  const [chatMessages, setChatMessages] = useState([
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
       from: "bot",
       text: "Xin chào, tôi là Trợ lý AI Sáng kiến. Tôi có thể gợi ý ý tưởng dựa trên dữ liệu sáng kiến hiện có.",
@@ -201,6 +217,7 @@ export default function Home() {
     resetForm,
     exportDocx,
     startEdit,
+    prefillFormFromSuggestion,
   } = useInitiativeForm({
     initiatives,
     addLocal,
@@ -273,16 +290,20 @@ export default function Home() {
     );
   }, [initiatives, searchQuery, selectedDepartment, selectedField, selectedStatus]);
 
-  const adminItems = useMemo(
-    () =>
-      initiatives.filter(
-        (item) =>
-          (adminDepartment === "Tất cả" || item.donVi === adminDepartment) &&
-          (adminField === "Tất cả" || item.linhVuc === adminField) &&
-          (adminStatus === "Tất cả" || item.trangThai === adminStatus),
-      ),
-    [adminDepartment, adminField, adminStatus, initiatives],
-  );
+  const adminItems = useMemo(() => {
+    const query = adminSearch.trim().toLowerCase();
+    return initiatives.filter(
+      (item) =>
+        (adminDepartment === "Tất cả" || item.donVi === adminDepartment) &&
+        (adminField === "Tất cả" || item.linhVuc === adminField) &&
+        (adminStatus === "Tất cả" || item.trangThai === adminStatus) &&
+        (!query ||
+          item.ten.toLowerCase().includes(query) ||
+          item.tacGia.toLowerCase().includes(query) ||
+          item.donVi.toLowerCase().includes(query) ||
+          item.tomTat.toLowerCase().includes(query)),
+    );
+  }, [adminDepartment, adminField, adminSearch, adminStatus, initiatives]);
 
   const fieldCounts = useMemo(() => {
     const counts = publicFiltered.reduce<Record<string, number>>((acc, item) => {
@@ -316,6 +337,34 @@ export default function Home() {
     const topField = fieldCounts.slice().sort((a, b) => b[1] - a[1])[0]?.[0] ?? "Công nghệ";
     return { approved, pending, interests, topField };
   }, [fieldCounts, initiatives]);
+
+  const filterSummary = useMemo(
+    () =>
+      [
+        selectedDepartment !== "Tất cả" ? { key: "department", label: "Phòng ban", value: selectedDepartment } : null,
+        selectedField !== "Tất cả" ? { key: "field", label: "Lĩnh vực", value: selectedField } : null,
+        selectedStatus !== "Tất cả" ? { key: "status", label: "Trạng thái", value: selectedStatus } : null,
+        searchQuery.trim() ? { key: "search", label: "Tìm kiếm", value: searchQuery.trim() } : null,
+      ].filter(Boolean) as { key: string; label: string; value: string }[],
+    [searchQuery, selectedDepartment, selectedField, selectedStatus],
+  );
+
+  function clearFilters() {
+    setSelectedDepartment("Tất cả");
+    setSelectedField("Tất cả");
+    setSelectedStatus("Tất cả");
+    setSearchQuery("");
+  }
+
+  function applyChartFilter(kind: FilterKind, value: string, targetView?: View) {
+    if (kind === "department") setSelectedDepartment(value);
+    if (kind === "field") setSelectedField(value);
+    if (kind === "status") setSelectedStatus(value);
+    if (kind === "author") setSearchQuery(value);
+    setTablePulse(true);
+    window.setTimeout(() => setTablePulse(false), 900);
+    if (targetView) setView(targetView);
+  }
 
   function loginAdmin() {
     setRole("admin");
@@ -406,13 +455,93 @@ export default function Home() {
     return "Tôi gợi ý bắt đầu từ một điểm nghẽn có dữ liệu đo được: thời gian chờ, chi phí lặp lại, rủi ro an toàn hoặc mức độ hài lòng của đoàn viên. Sau đó đặt chỉ số trước/sau để sáng kiến dễ phê duyệt và nhân rộng.";
   }
 
+  function aiSuggestions(input: string): ChatSuggestion[] {
+    const lower = input.toLowerCase();
+    if (lower.includes("nhân lực") || lower.includes("quản trị nguồn nhân lực")) {
+      return [
+        {
+          title: "Số hóa onboarding đoàn viên và nhân sự dự án",
+          field: "Quy trình",
+          problem: "Thông tin hội nhập, mentor và checklist an toàn đang phân tán theo nhiều đầu mối.",
+          solution: "Tạo checklist số theo vai trò, gắn mentor nội bộ và nhắc việc theo mốc 7-30-60 ngày.",
+          expectedImpact: "Rút ngắn thời gian hội nhập, tăng mức độ hài lòng và giảm lỗi lặp lại.",
+          prefill: {
+            ten: "Số hóa onboarding đoàn viên và nhân sự dự án",
+            linhVuc: "Quy trình",
+            donVi: "Ban Quản trị nguồn nhân lực",
+            lyDo: "Quy trình hội nhập còn phân tán, khó theo dõi tiến độ và mức độ sẵn sàng của nhân sự mới.",
+            mucTieu: "Chuẩn hóa trải nghiệm hội nhập, giúp người lao động nắm nhanh thông tin công đoàn, an toàn và quy trình phối hợp.",
+            thucTrang: "Checklist, tài liệu và phản hồi hiện được trao đổi rời rạc qua email hoặc file riêng.",
+            giaiPhap: "Xây dựng bộ checklist số, gắn mentor, nhắc việc tự động và dashboard theo dõi tiến độ hội nhập.",
+            cachThuc: "Thí điểm tại một nhóm nhân sự dự án, đo thời gian hoàn thành checklist và mức độ hài lòng trước khi nhân rộng.",
+            tomTat: "Số hóa onboarding bằng checklist, mentor và dashboard theo dõi tiến độ.",
+            hieuQua: "Rút ngắn thời gian hội nhập, tăng trải nghiệm đoàn viên và giảm chi phí phối hợp.",
+            tinhMoi: "Kết hợp dữ liệu tiến độ, nhắc việc và phản hồi đoàn viên trên một luồng số.",
+            nhanRong: "Có thể áp dụng cho các ban/văn phòng có nhân sự mới hoặc nhân sự luân chuyển.",
+          },
+        },
+      ];
+    }
+
+    if (lower.includes("an toàn") || lower.includes("hse")) {
+      return [
+        {
+          title: "Bản đồ cảnh báo rủi ro HSE theo ca làm việc",
+          field: "An toàn",
+          problem: "Cảnh báo an toàn thường đến sau khi đã phát sinh tình huống hoặc phụ thuộc kinh nghiệm cá nhân.",
+          solution: "Tổng hợp lịch làm việc, thời tiết, điểm nóng và sự cố gần nhất thành bản đồ cảnh báo trước ca.",
+          expectedImpact: "Giảm rủi ro vận hành, tăng chủ động nhắc việc và bảo vệ người lao động.",
+          prefill: {
+            ten: "Bản đồ cảnh báo rủi ro HSE theo ca làm việc",
+            linhVuc: "An toàn",
+            donVi: "Ban An toàn Môi trường & Phát triển bền vững",
+            lyDo: "Cần công cụ cảnh báo sớm rủi ro an toàn dựa trên dữ liệu ca kíp, môi trường và sự cố gần nhất.",
+            mucTieu: "Nâng cao năng lực phòng ngừa rủi ro HSE trước ca làm việc.",
+            thucTrang: "Thông tin cảnh báo đang phân tán, khó tổng hợp nhanh cho từng nhóm lao động.",
+            giaiPhap: "Xây dựng dashboard cảnh báo rủi ro theo ca với điểm nóng, checklist nhắc việc và lịch sử sự cố.",
+            cachThuc: "Thu thập dữ liệu ca kíp, thời tiết, vị trí công việc và sự cố để tạo mức cảnh báo theo ngày.",
+            tomTat: "Dashboard cảnh báo rủi ro HSE trước ca làm việc.",
+            hieuQua: "Giảm rủi ro an toàn, tăng chủ động kiểm soát và nâng cao văn hóa an toàn.",
+            tinhMoi: "Kết hợp dữ liệu vận hành với cảnh báo trực quan theo thời gian gần thực.",
+            nhanRong: "Có thể mở rộng cho các đơn vị sản xuất, vận hành, kiểm tra hiện trường.",
+          },
+        },
+      ];
+    }
+
+    return [
+      {
+        title: "Trợ lý phát hiện cơ hội tiết kiệm KHCN-ĐMST",
+        field: "Công nghệ",
+        problem: "Các cơ hội tiết kiệm năng lượng, chi phí và thời gian xử lý chưa được phát hiện sớm từ dữ liệu hiện có.",
+        solution: "Dùng dashboard dữ liệu và AI gợi ý điểm nghẽn, ưu tiên sáng kiến có chỉ số trước/sau rõ ràng.",
+        expectedImpact: "Tăng số sáng kiến có khả năng đo hiệu quả, giảm lãng phí và thúc đẩy đổi mới xanh số.",
+        prefill: {
+          ten: "Trợ lý phát hiện cơ hội tiết kiệm KHCN-ĐMST",
+          linhVuc: "Công nghệ",
+          donVi: "Ban Khoa học Công nghệ & Chuyển đổi số",
+          lyDo: "Nhiều dữ liệu vận hành và quản trị chưa được khai thác để phát hiện cơ hội tiết kiệm.",
+          mucTieu: "Tạo công cụ gợi ý sáng kiến dựa trên dữ liệu, ưu tiên các cơ hội có thể đo lường hiệu quả.",
+          thucTrang: "Ý tưởng cải tiến phụ thuộc nhiều vào kinh nghiệm cá nhân và chưa có cơ chế tổng hợp dữ liệu thường xuyên.",
+          giaiPhap: "Xây dựng dashboard kết hợp AI để phát hiện điểm nghẽn, đề xuất nhóm sáng kiến và chỉ số đánh giá trước/sau.",
+          cachThuc: "Thí điểm với dữ liệu chi phí, thời gian xử lý, năng lượng và phản hồi đoàn viên tại một số ban/văn phòng.",
+          tomTat: "AI gợi ý cơ hội tiết kiệm và đổi mới dựa trên dữ liệu nội bộ.",
+          hieuQua: "Tăng chất lượng sáng kiến, giảm lãng phí và tạo nền dữ liệu cho thi đua đổi mới.",
+          tinhMoi: "Kết hợp GenAI, dashboard dữ liệu và luồng đóng góp sáng kiến công đoàn.",
+          nhanRong: "Có thể nhân rộng cho các lĩnh vực quy trình, môi trường, an toàn và văn hóa số.",
+        },
+      },
+    ];
+  }
+
   function sendChat(text: string) {
     const message = text.trim();
     if (!message) return;
+    const suggestions = aiSuggestions(message);
     setChatMessages((items) => [
       ...items,
       { from: "user", text: message },
-      { from: "bot", text: aiAnswer(message) },
+      { from: "bot", text: aiAnswer(message), suggestions },
     ]);
     setChatInput("");
   }
@@ -442,8 +571,11 @@ export default function Home() {
           totals={totals}
           selectedDepartment={selectedDepartment}
           selectedField={selectedField}
+          filterSummary={filterSummary}
           setSelectedDepartment={setSelectedDepartment}
           setSelectedField={setSelectedField}
+          applyChartFilter={applyChartFilter}
+          clearFilters={clearFilters}
           startCreate={startCreate}
           openDetails={openDetails}
           openChat={() => {
@@ -472,6 +604,8 @@ export default function Home() {
           setSelectedField={setSelectedField}
           setSelectedStatus={setSelectedStatus}
           setSearchQuery={setSearchQuery}
+          filterSummary={filterSummary}
+          clearFilters={clearFilters}
           updateForm={updateForm}
           authorMode={authorMode}
           onModeChange={handleModeChange}
@@ -486,6 +620,7 @@ export default function Home() {
           editInitiative={editInitiative}
           showWordPreview={() => setShowWordPreview(true)}
           login={loginEmployee}
+          tablePulse={tablePulse}
         />
       )}
 
@@ -506,9 +641,13 @@ export default function Home() {
           setSelectedField={setSelectedField}
           setSelectedStatus={setSelectedStatus}
           setSearchQuery={setSearchQuery}
+          filterSummary={filterSummary}
+          clearFilters={clearFilters}
+          applyChartFilter={applyChartFilter}
           openDetails={openDetails}
           likeInitiative={likeInitiative}
           login={loginEmployee}
+          tablePulse={tablePulse}
         />
       )}
 
@@ -521,6 +660,7 @@ export default function Home() {
           departmentCounts={departmentCounts}
           leaderBoard={leaderBoard}
           openDetails={openDetails}
+          applyChartFilter={applyChartFilter}
           login={loginEmployee}
         />
       )}
@@ -546,12 +686,19 @@ export default function Home() {
           setDepartment={setAdminDepartment}
           setField={setAdminField}
           setStatus={setAdminStatus}
+          searchQuery={adminSearch}
+          setSearchQuery={setAdminSearch}
           exportCsv={exportCsv}
+          openDetails={openDetails}
+          changeStatus={(id, status) => {
+            updateLocal(id, { trangThai: status });
+            setSelectedInitiative((item) => (item?.id === id ? { ...item, trangThai: status } : item));
+          }}
         />
       )}
 
       {selectedInitiative && (
-        <DetailModal
+        <DetailDrawer
           item={selectedInitiative}
           canInteract={isAuthed}
           close={() => setSelectedInitiative(null)}
@@ -579,7 +726,12 @@ export default function Home() {
           input={chatInput}
           setInput={setChatInput}
           send={sendChat}
-          startCreate={startCreate}
+          applySuggestion={(suggestion) => {
+            prefillFormFromSuggestion(suggestion.prefill);
+            setView("initiatives");
+            setInitiativeMode("form");
+            setChatOpen(false);
+          }}
         />
       )}
     </main>
@@ -631,10 +783,10 @@ function Navigation({
 
   return (
     <header className="top-nav sticky top-0 z-40">
-      <div className="app-container flex h-16 items-center justify-between gap-4 lg:h-[76px]">
-        <button className="focus-ring flex min-w-0 items-center gap-3 text-left xl:w-[285px]" onClick={() => go("landing")}>
+      <div className="app-container grid h-16 grid-cols-[minmax(260px,310px)_minmax(0,1fr)_auto] items-center gap-3 lg:h-[76px]">
+        <button className="focus-ring flex min-w-0 items-center gap-3 text-left" onClick={() => go("landing")}>
           <img src="/logo-pvn.png" alt="Petrovietnam" className="h-10 w-auto object-contain" />
-          <span className="leading-tight">
+          <span className="min-w-0 leading-tight">
             <span className="block whitespace-nowrap text-[11px] font-black uppercase text-[var(--green-600)] sm:text-xs">
               Công đoàn Công ty Mẹ
             </span>
@@ -644,27 +796,27 @@ function Navigation({
           </span>
         </button>
 
-        <nav className="hidden items-center gap-1 xl:flex">
+        <nav className="hidden min-w-0 items-center justify-center gap-0.5 xl:flex">
           {visibleNavItems.map((item) => {
             const Icon = item.icon;
             return (
               <button
                 key={item.id}
-                className={`inline-flex items-center gap-2 whitespace-nowrap rounded-md px-2.5 py-2 text-sm font-bold transition ${
+                className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-2 text-sm font-bold transition ${
                   view === item.id
                     ? "bg-[var(--navy-900)] text-white shadow-md shadow-[var(--navy-900)]/15"
                     : "bg-white/70 text-[var(--navy-800)] hover:bg-white"
                 }`}
                 onClick={() => handleGo(item.id)}
               >
-                <Icon className="h-4 w-4" />
+                <Icon className="hidden h-4 w-4 2xl:block" />
                 {item.label}
               </button>
             );
           })}
         </nav>
 
-        <div className="hidden items-center gap-2 xl:flex">
+        <div className="hidden shrink-0 items-center gap-2 xl:flex">
           {isGuest ? (
             <>
               <button
@@ -679,13 +831,6 @@ function Navigation({
               >
                 Đăng nhập tài khoản Tập đoàn
               </button>
-              <button
-                className="whitespace-nowrap rounded-md border border-[var(--line)] bg-white px-3 py-2 text-xs font-black text-[var(--muted)]"
-                onClick={loginAdmin}
-                title="Prototype: đăng nhập Admin"
-              >
-                Admin
-              </button>
             </>
           ) : (
             <>
@@ -694,7 +839,7 @@ function Navigation({
               </span>
               {!isAdmin && (
                 <button
-                  className="rounded-md border border-[var(--line)] bg-white px-3 py-2 text-xs font-black text-[var(--muted)]"
+                  className="hidden rounded-md border border-[var(--line)] bg-white px-3 py-2 text-xs font-black text-[var(--muted)] 2xl:block"
                   onClick={loginAdmin}
                   title="Prototype: chuyển sang Admin"
                 >
@@ -794,8 +939,9 @@ function LandingPage({
   totals,
   selectedDepartment,
   selectedField,
-  setSelectedDepartment,
-  setSelectedField,
+  filterSummary,
+  applyChartFilter,
+  clearFilters,
   startCreate,
   openDetails,
   openChat,
@@ -811,8 +957,9 @@ function LandingPage({
   totals: { approved: number; pending: number; interests: number; topField: Field };
   selectedDepartment: string;
   selectedField: string;
-  setSelectedDepartment: (value: string) => void;
-  setSelectedField: (value: string) => void;
+  filterSummary: { key: string; label: string; value: string }[];
+  applyChartFilter: (kind: FilterKind, value: string, targetView?: View) => void;
+  clearFilters: () => void;
   startCreate: () => void;
   openDetails: (item: Initiative) => void;
   openChat: () => void;
@@ -821,7 +968,7 @@ function LandingPage({
 }) {
   return (
     <>
-      <section className="relative min-h-[520px] overflow-hidden bg-white text-[var(--navy-900)] sm:min-h-[560px]">
+      <section className="energy-flow relative min-h-[520px] overflow-hidden bg-white text-[var(--navy-900)] sm:min-h-[560px]">
         <img
           src="/visuals/hero-green-innovation-flow.png"
           alt="Dòng chảy sáng kiến xanh số"
@@ -830,6 +977,15 @@ function LandingPage({
         <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.98)_0%,rgba(255,255,255,0.94)_28%,rgba(255,255,255,0.62)_48%,rgba(255,255,255,0.1)_78%)]" />
         <div className="absolute inset-x-0 bottom-0 h-24 bg-[linear-gradient(180deg,transparent,var(--mist))]" />
         <div className="energy-grid absolute inset-0 opacity-55" />
+        <div className="pointer-events-none absolute right-[9%] top-[20%] hidden xl:block">
+          <span className="idea-chip">AI</span>
+        </div>
+        <div className="pointer-events-none absolute right-[23%] top-[42%] hidden lg:block">
+          <span className="idea-chip idea-chip-cyan">Dữ liệu</span>
+        </div>
+        <div className="pointer-events-none absolute right-[34%] top-[58%] hidden lg:block">
+          <span className="idea-chip idea-chip-gold">Ý tưởng xanh</span>
+        </div>
         <div className="app-container relative z-10 pb-16 pt-12 sm:pb-20 sm:pt-16 lg:pb-24 lg:pt-20">
           <div className="max-w-[650px]">
             <h1 className="text-balance text-[2.15rem] font-black leading-[1.05] text-[var(--navy-900)] sm:text-6xl lg:text-[4.45rem]">
@@ -874,8 +1030,9 @@ function LandingPage({
         leaderBoard={leaderBoard}
         selectedDepartment={selectedDepartment}
         selectedField={selectedField}
-        setSelectedDepartment={setSelectedDepartment}
-        setSelectedField={setSelectedField}
+        filterSummary={filterSummary}
+        applyChartFilter={applyChartFilter}
+        clearFilters={clearFilters}
         showLogin={showLogin}
         go={go}
       />
@@ -963,8 +1120,9 @@ function BasicStats({
   leaderBoard,
   selectedDepartment,
   selectedField,
-  setSelectedDepartment,
-  setSelectedField,
+  filterSummary,
+  applyChartFilter,
+  clearFilters,
   showLogin,
   go,
 }: {
@@ -974,8 +1132,9 @@ function BasicStats({
   leaderBoard: { ten: string; donVi: string; soSangKien: number }[];
   selectedDepartment: string;
   selectedField: string;
-  setSelectedDepartment: (value: string) => void;
-  setSelectedField: (value: string) => void;
+  filterSummary: { key: string; label: string; value: string }[];
+  applyChartFilter: (kind: FilterKind, value: string, targetView?: View) => void;
+  clearFilters: () => void;
   showLogin: () => void;
   go: (view: View) => void;
 }) {
@@ -985,6 +1144,7 @@ function BasicStats({
   return (
     <section className="app-container py-10 lg:py-14">
       <SectionTitle title="Trang thống kê cơ bản" icon={Sparkles} />
+      <ActiveFilterChips filters={filterSummary.filter((item) => item.key !== "status" && item.key !== "search")} clearFilters={clearFilters} />
       <div className="grid gap-4 lg:grid-cols-12">
         <ChartPanel className="lg:col-span-3" title="Top Ban/Văn phòng" action={() => go("competition")}>
           <div className="space-y-3">
@@ -996,7 +1156,7 @@ function BasicStats({
                 value={count}
                 active={selectedDepartment === name}
                 max={maxDepartment}
-                onClick={() => setSelectedDepartment(name)}
+                onClick={() => applyChartFilter("department", name)}
               />
             ))}
           </div>
@@ -1005,20 +1165,20 @@ function BasicStats({
         <ChartPanel className="lg:col-span-3" title="Top cá nhân" action={() => go("competition")}>
           <div className="space-y-3">
             {leaderBoard.map((person, index) => (
-              <div key={person.ten} className="flex items-center gap-3 rounded-lg bg-[var(--mist)] p-3">
+              <button key={person.ten} className="flex w-full items-center gap-3 rounded-lg bg-[var(--mist)] p-3 text-left" onClick={() => applyChartFilter("author", person.ten, "stats")}>
                 <Avatar name={person.ten} index={index} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-black">{person.ten}</p>
                   <p className="truncate text-xs font-semibold text-[var(--muted)]">{person.donVi}</p>
                 </div>
                 <span className="text-sm font-black text-[var(--navy-900)]">{person.soSangKien}</span>
-              </div>
+              </button>
             ))}
           </div>
         </ChartPanel>
 
         <ChartPanel className="lg:col-span-3" title="Lĩnh vực" action={() => showLogin()}>
-          <WordCloud />
+          <WordCloud selectedField={selectedField} onSelect={(field) => applyChartFilter("field", field)} />
           <div className="mt-5 flex flex-wrap gap-2">
             {fields.map((field) => (
               <button
@@ -1026,7 +1186,7 @@ function BasicStats({
                 className={`rounded-full px-3 py-1.5 text-xs font-black ${
                   selectedField === field ? "bg-[var(--green-600)] text-white" : "bg-[var(--mist)] text-[var(--navy-900)]"
                 }`}
-                onClick={() => setSelectedField(field)}
+                onClick={() => applyChartFilter("field", field)}
               >
                 {field}
               </button>
@@ -1035,10 +1195,10 @@ function BasicStats({
         </ChartPanel>
 
         <ChartPanel className="lg:col-span-3" title="Tỷ lệ sáng kiến theo lĩnh vực" action={() => go("stats")}>
-          <DonutChart total={filtered.length} fieldCounts={fieldCounts} />
+          <DonutChart total={filtered.length} fieldCounts={fieldCounts} selectedField={selectedField} onFieldSelect={(field) => applyChartFilter("field", field)} />
           <div className="mt-5 space-y-2">
             {fieldCounts.map(([field, count]) => (
-              <button key={field} className="w-full text-left" onClick={() => setSelectedField(field)}>
+              <button key={field} className="w-full text-left" onClick={() => applyChartFilter("field", field)}>
                 <div className="mb-1 flex justify-between text-xs font-black">
                   <span>{field}</span>
                   <span>{count}</span>
@@ -1074,6 +1234,8 @@ function InitiativesPage({
   setSelectedField,
   setSelectedStatus,
   setSearchQuery,
+  filterSummary,
+  clearFilters,
   updateForm,
   authorMode,
   onModeChange,
@@ -1088,6 +1250,7 @@ function InitiativesPage({
   editInitiative,
   showWordPreview,
   login,
+  tablePulse,
 }: {
   isAuthed: boolean;
   mode: "list" | "form";
@@ -1104,6 +1267,8 @@ function InitiativesPage({
   setSelectedField: (value: string) => void;
   setSelectedStatus: (value: string) => void;
   setSearchQuery: (value: string) => void;
+  filterSummary: { key: string; label: string; value: string }[];
+  clearFilters: () => void;
   updateForm: (key: keyof FormState, value: string) => void;
   authorMode: AuthorMode;
   onModeChange: (mode: AuthorMode) => void;
@@ -1118,6 +1283,7 @@ function InitiativesPage({
   editInitiative: (item: Initiative) => void;
   showWordPreview: () => void;
   login: () => void;
+  tablePulse: boolean;
 }) {
   if (!isAuthed) {
     return (
@@ -1173,9 +1339,11 @@ function InitiativesPage({
         setSelectedField={setSelectedField}
         setSelectedStatus={setSelectedStatus}
         setSearchQuery={setSearchQuery}
+        filterSummary={filterSummary}
+        clearFilters={clearFilters}
       />
       <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_340px]">
-        <section className="card overflow-hidden rounded-xl">
+        <section className={`card overflow-hidden rounded-xl transition ${tablePulse ? "ring-4 ring-[var(--cyan-100)]" : ""}`}>
           <div className="flex flex-col gap-3 border-b border-[var(--line)] p-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h3 className="font-black">Bảng thống kê sáng kiến</h3>
@@ -1227,9 +1395,13 @@ function StatsPage({
   setSelectedField,
   setSelectedStatus,
   setSearchQuery,
+  filterSummary,
+  clearFilters,
+  applyChartFilter,
   openDetails,
   likeInitiative,
   login,
+  tablePulse,
 }: {
   isAuthed: boolean;
   items: Initiative[];
@@ -1246,9 +1418,13 @@ function StatsPage({
   setSelectedField: (value: string) => void;
   setSelectedStatus: (value: string) => void;
   setSearchQuery: (value: string) => void;
+  filterSummary: { key: string; label: string; value: string }[];
+  clearFilters: () => void;
+  applyChartFilter: (kind: FilterKind, value: string, targetView?: View) => void;
   openDetails: (item: Initiative) => void;
   likeInitiative: (id: number) => void;
   login: () => void;
+  tablePulse: boolean;
 }) {
   if (!isAuthed) {
     return (
@@ -1274,6 +1450,8 @@ function StatsPage({
         setSelectedField={setSelectedField}
         setSelectedStatus={setSelectedStatus}
         setSearchQuery={setSearchQuery}
+        filterSummary={filterSummary}
+        clearFilters={clearFilters}
       />
       <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <StatTile icon={Lightbulb} value={String(initiatives.length)} label="Tổng sáng kiến" caption="Tất cả dữ liệu" color="var(--green-600)" card />
@@ -1286,23 +1464,23 @@ function StatsPage({
         <ChartPanel className="lg:col-span-4" title="Sáng kiến theo Ban/Văn phòng">
           <div className="space-y-3">
             {departmentCounts.slice(0, 8).map(([name, count], index) => (
-              <LeaderboardRow key={name} index={index + 1} name={name} value={count} max={Math.max(...departmentCounts.map(([, c]) => c), 1)} onClick={() => setSelectedDepartment(name)} />
+              <LeaderboardRow key={name} index={index + 1} name={name} value={count} active={selectedDepartment === name} max={Math.max(...departmentCounts.map(([, c]) => c), 1)} onClick={() => applyChartFilter("department", name)} />
             ))}
           </div>
         </ChartPanel>
         <ChartPanel className="lg:col-span-4" title="Lĩnh vực / wordcloud">
-          <WordCloud />
-          <DonutChart total={items.length} fieldCounts={fieldCounts} compact />
+          <WordCloud selectedField={selectedField} onSelect={(field) => applyChartFilter("field", field)} />
+          <DonutChart total={items.length} fieldCounts={fieldCounts} compact selectedField={selectedField} onFieldSelect={(field) => applyChartFilter("field", field)} />
         </ChartPanel>
         <ChartPanel className="lg:col-span-4" title="Mối quan tâm theo tác giả">
           <div className="space-y-3">
             {leaderBoard.map((person, index) => (
-              <LeaderboardRow key={person.ten} index={index + 1} name={person.ten} value={person.soSangKien} max={Math.max(...leaderBoard.map((p) => p.soSangKien), 1)} />
+              <LeaderboardRow key={person.ten} index={index + 1} name={person.ten} value={person.soSangKien} active={searchQuery === person.ten} max={Math.max(...leaderBoard.map((p) => p.soSangKien), 1)} onClick={() => applyChartFilter("author", person.ten)} />
             ))}
           </div>
         </ChartPanel>
       </div>
-      <div className="mt-5 card overflow-hidden rounded-xl">
+      <div className={`mt-5 card overflow-hidden rounded-xl transition ${tablePulse ? "ring-4 ring-[var(--cyan-100)]" : ""}`}>
         <InitiativeTable items={items} openDetails={openDetails} likeInitiative={likeInitiative} />
       </div>
     </PageFrame>
@@ -1317,6 +1495,7 @@ function CompetitionPage({
   departmentCounts,
   leaderBoard,
   openDetails,
+  applyChartFilter,
   login,
 }: {
   isAuthed: boolean;
@@ -1326,10 +1505,13 @@ function CompetitionPage({
   departmentCounts: [string, number][];
   leaderBoard: { ten: string; donVi: string; soSangKien: number }[];
   openDetails: (item: Initiative) => void;
+  applyChartFilter: (kind: FilterKind, value: string, targetView?: View) => void;
   login: () => void;
 }) {
   const topInitiatives = initiatives.slice().sort((a, b) => b.quanTam - a.quanTam).slice(0, 6);
   const awards = initiatives.filter((item) => item.giaiThuong !== "Chờ xét chọn").slice(0, 4);
+  const podium = departmentCounts.slice(0, 3);
+  const spotlight = topInitiatives[0];
 
   return (
     <PageFrame eyebrow="Thi đua" title="Bảng thi đua sáng kiến">
@@ -1347,23 +1529,65 @@ function CompetitionPage({
           </button>
         )}
       </div>
+      <div className="mb-6 grid gap-4 lg:grid-cols-[1.05fr_1fr]">
+        <section className="card rounded-xl p-5">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="font-black">Podium thi đua Ban/Văn phòng</h3>
+            <Pill tone="gold">{range}</Pill>
+          </div>
+          <div className="mt-5 grid items-end gap-3 sm:grid-cols-3">
+            {podium.map(([name, count], index) => (
+              <button
+                key={name}
+                className={`rounded-xl border border-[var(--line)] bg-white p-4 text-left transition hover:-translate-y-0.5 ${index === 0 ? "sm:order-2 sm:min-h-48" : index === 1 ? "sm:order-1 sm:min-h-40" : "sm:order-3 sm:min-h-36"}`}
+                onClick={() => applyChartFilter("department", name, "stats")}
+              >
+                <div className={`grid h-10 w-10 place-items-center rounded-full text-lg font-black ${index === 0 ? "bg-[var(--gold-500)] text-white" : "bg-[var(--green-100)] text-[var(--green-700)]"}`}>{index + 1}</div>
+                <p className="mt-4 line-clamp-2 font-black">{name}</p>
+                <p className="mt-3 text-3xl font-black text-[var(--green-600)]">{count}</p>
+                <p className="text-xs font-bold text-[var(--muted)]">sáng kiến</p>
+              </button>
+            ))}
+          </div>
+        </section>
+        {spotlight && (
+          <section className="card relative overflow-hidden rounded-xl p-5">
+            <div className="absolute inset-y-0 right-0 w-1/2 bg-[linear-gradient(90deg,transparent,rgba(29,190,214,0.12))]" />
+            <div className="relative">
+              <div className="mb-3 flex flex-wrap gap-2">
+                <Pill tone="gold">Sáng kiến tiêu biểu</Pill>
+                <Pill field={spotlight.linhVuc}>{spotlight.linhVuc}</Pill>
+              </div>
+              <h3 className="text-2xl font-black leading-tight text-[var(--navy-900)]">{spotlight.ten}</h3>
+              <p className="mt-3 line-clamp-3 text-sm leading-6 text-[var(--muted)]">{spotlight.tomTat}</p>
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <Metric label="Quan tâm" value={String(spotlight.quanTam)} />
+                <Metric label="Điểm thi đua" value={String(spotlight.diem)} />
+              </div>
+              <button className="mt-5 rounded-md bg-[var(--green-600)] px-4 py-3 text-sm font-black text-white" onClick={() => openDetails(spotlight)}>
+                Xem sáng kiến
+              </button>
+            </div>
+          </section>
+        )}
+      </div>
       <div className="grid gap-4 lg:grid-cols-3">
         <ChartPanel title="Top Ban/Văn phòng">
           {departmentCounts.slice(0, 6).map(([name, count], index) => (
-            <LeaderboardRow key={name} index={index + 1} name={name} value={count} max={Math.max(...departmentCounts.map(([, c]) => c), 1)} />
+            <LeaderboardRow key={name} index={index + 1} name={name} value={count} max={Math.max(...departmentCounts.map(([, c]) => c), 1)} onClick={() => applyChartFilter("department", name, "stats")} />
           ))}
         </ChartPanel>
         <ChartPanel title="Top cá nhân">
           <div className="space-y-3">
             {leaderBoard.map((person, index) => (
-              <div key={person.ten} className="flex items-center gap-3 rounded-lg bg-[var(--mist)] p-3">
+              <button key={person.ten} className="flex w-full items-center gap-3 rounded-lg bg-[var(--mist)] p-3 text-left" onClick={() => applyChartFilter("author", person.ten, "stats")}>
                 <Avatar name={person.ten} index={index} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-black">{person.ten}</p>
                   <p className="truncate text-xs font-semibold text-[var(--muted)]">{person.donVi}</p>
                 </div>
                 <span className="font-black">{person.soSangKien}</span>
-              </div>
+              </button>
             ))}
           </div>
         </ChartPanel>
@@ -1474,7 +1698,11 @@ function AdminPortal({
   setDepartment,
   setField,
   setStatus,
+  searchQuery,
+  setSearchQuery,
   exportCsv,
+  openDetails,
+  changeStatus,
 }: {
   items: Initiative[];
   department: string;
@@ -1483,7 +1711,11 @@ function AdminPortal({
   setDepartment: (value: string) => void;
   setField: (value: string) => void;
   setStatus: (value: string) => void;
+  searchQuery: string;
+  setSearchQuery: (value: string) => void;
   exportCsv: () => void;
+  openDetails: (item: Initiative) => void;
+  changeStatus: (id: number, status: Status) => void;
 }) {
   const approved = items.filter((item) => item.trangThai === "Đã duyệt").length;
   const interests = items.reduce((sum, item) => sum + item.quanTam, 0);
@@ -1499,10 +1731,14 @@ function AdminPortal({
       </div>
       <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
         <section className="card overflow-hidden rounded-xl">
-          <div className="grid gap-3 border-b border-[var(--line)] p-4 md:grid-cols-4">
+          <div className="grid gap-3 border-b border-[var(--line)] p-4 md:grid-cols-5">
             <Select label="Phòng ban" value={department} onChange={setDepartment} options={["Tất cả", ...departments]} />
             <Select label="Lĩnh vực" value={field} onChange={setField} options={["Tất cả", ...fields]} />
             <Select label="Trạng thái" value={status} onChange={setStatus} options={statuses} />
+            <label>
+              <span className="text-xs font-black uppercase text-[var(--muted)]">Tìm kiếm</span>
+              <input className="mt-2 w-full rounded-md border border-[var(--line)] px-3 py-2 text-sm font-bold outline-none focus:border-[var(--green-600)]" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Tên, tác giả, đơn vị..." />
+            </label>
             <button className="rounded-md bg-[var(--green-600)] px-4 py-3 text-sm font-black text-white" onClick={exportCsv}>
               Export Excel/CSV
             </button>
@@ -1511,7 +1747,7 @@ function AdminPortal({
             <table className="w-full min-w-[980px] border-collapse text-left text-sm">
               <thead className="bg-[var(--navy-900)] text-white">
                 <tr>
-                  {["Tên sáng kiến", "Lĩnh vực", "Đơn vị", "Tác giả", "Trạng thái", "Quan tâm", "Điểm", "Giải thưởng"].map((head) => (
+                  {["Tên sáng kiến", "Lĩnh vực", "Đơn vị", "Tác giả", "Trạng thái", "Quan tâm", "Điểm", "Giải thưởng", "Thao tác"].map((head) => (
                     <th key={head} className="px-4 py-3">{head}</th>
                   ))}
                 </tr>
@@ -1527,6 +1763,14 @@ function AdminPortal({
                     <td className="px-4 py-3">{item.quanTam}</td>
                     <td className="px-4 py-3">{item.diem}</td>
                     <td className="px-4 py-3">{item.giaiThuong}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-2">
+                        <button className="rounded-md bg-[var(--blue-100)] px-3 py-2 text-xs font-black text-[var(--blue-700)]" onClick={() => openDetails(item)}>Xem</button>
+                        <button className="rounded-md bg-[var(--green-100)] px-3 py-2 text-xs font-black text-[var(--green-700)]" onClick={() => changeStatus(item.id, item.trangThai === "Đã duyệt" ? "Chờ duyệt" : "Đã duyệt")}>
+                          {item.trangThai === "Đã duyệt" ? "Chờ duyệt" : "Duyệt"}
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1541,6 +1785,12 @@ function AdminPortal({
                   <Pill field={item.linhVuc}>{item.linhVuc}</Pill>
                   <StatusBadge status={item.trangThai} />
                   <Pill tone="gold">{item.giaiThuong}</Pill>
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <button className="rounded-md bg-[var(--blue-100)] px-3 py-2 text-xs font-black text-[var(--blue-700)]" onClick={() => openDetails(item)}>Xem chi tiết</button>
+                  <button className="rounded-md bg-[var(--green-100)] px-3 py-2 text-xs font-black text-[var(--green-700)]" onClick={() => changeStatus(item.id, item.trangThai === "Đã duyệt" ? "Chờ duyệt" : "Đã duyệt")}>
+                    {item.trangThai === "Đã duyệt" ? "Chờ duyệt" : "Duyệt"}
+                  </button>
                 </div>
               </div>
             ))}
@@ -1587,6 +1837,29 @@ function InitiativeForm({
   showWordPreview: () => void;
   backToList: () => void;
 }) {
+  const formSteps = [
+    {
+      title: "Thông tin chung",
+      done: Boolean(form.ten.trim() && form.email.trim() && form.donVi),
+    },
+    {
+      title: "Tác giả",
+      done: form.danhSachTacGia.every((author) => author.hoTen.trim()),
+    },
+    {
+      title: "Nội dung",
+      done: Boolean(form.lyDo.trim() && form.mucTieu.trim() && form.giaiPhap.trim()),
+    },
+    {
+      title: "Hiệu quả",
+      done: Boolean(form.hieuQua.trim() && form.tinhMoi.trim()),
+    },
+    {
+      title: "Preview/Gửi",
+      done: formMessage.startsWith("Đã gửi") || formMessage.startsWith("Đã cập nhật"),
+    },
+  ];
+
   return (
     <section>
       <form className="card overflow-hidden" onSubmit={submitInitiative}>
@@ -1594,6 +1867,21 @@ function InitiativeForm({
           <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
             <h3 className="text-xl font-black text-[var(--navy-900)]">Thông tin chung</h3>
             <StatusBadge status="Chờ duyệt" />
+          </div>
+        </div>
+
+        <div className="border-b border-[var(--line)] bg-[var(--mist)] px-5 py-4 sm:px-7">
+          <div className="grid gap-2 sm:grid-cols-5">
+            {formSteps.map((step, index) => (
+              <div key={step.title} className={`rounded-lg border px-3 py-3 ${step.done ? "border-[var(--green-500)] bg-white" : "border-[var(--line)] bg-white/65"}`}>
+                <div className="flex items-center gap-2">
+                  <span className={`grid h-6 w-6 place-items-center rounded-full text-xs font-black ${step.done ? "bg-[var(--green-600)] text-white" : "bg-[var(--blue-100)] text-[var(--blue-700)]"}`}>
+                    {index + 1}
+                  </span>
+                  <span className="min-w-0 truncate text-xs font-black text-[var(--navy-900)]">{step.title}</span>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -1821,9 +2109,12 @@ function InitiativeForm({
             placeholder="Điều kiện và phạm vi có thể nhân rộng..."
           />
           {formMessage && (
-            <p className="rounded-md border border-[var(--green-200)] bg-[var(--green-100)] p-3 text-sm font-bold text-[var(--green-700)]">
-              {formMessage}
-            </p>
+            <div className={`rounded-xl border p-4 text-sm font-bold ${formMessage.startsWith("Đã gửi") || formMessage.startsWith("Đã cập nhật") ? "border-[var(--green-500)] bg-[var(--green-100)] text-[var(--green-700)]" : "border-[var(--gold-500)] bg-[var(--gold-100)] text-[var(--navy-900)]"}`}>
+              <p>{formMessage}</p>
+              {(formMessage.startsWith("Đã gửi") || formMessage.startsWith("Đã cập nhật")) && (
+                <p className="mt-1 text-xs font-black text-[var(--navy-800)]">Hồ sơ đã được ghi nhận trong kho dữ liệu prototype.</p>
+              )}
+            </div>
           )}
         </div>
 
@@ -1959,7 +2250,7 @@ function InitiativeCard({
   );
 }
 
-function DetailModal({
+function DetailDrawer({
   item,
   canInteract,
   close,
@@ -1973,10 +2264,11 @@ function DetailModal({
   edit: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-[var(--navy-950)]/65 p-4">
-      <div className="max-h-[92vh] w-full max-w-3xl overflow-auto rounded-xl bg-white shadow-2xl">
+    <div className="detail-backdrop fixed inset-0 z-50 bg-[var(--navy-950)]/65">
+      <button className="absolute inset-0 h-full w-full cursor-default" onClick={close} aria-label="Đóng chi tiết sáng kiến" />
+      <aside className="detail-drawer absolute bottom-0 right-0 flex max-h-[96vh] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:top-0 sm:h-full sm:max-h-none sm:w-[min(82vw,540px)] sm:rounded-l-2xl sm:rounded-tr-none">
         <img src={fieldMeta[item.linhVuc].image} alt="" className="h-48 w-full object-cover" />
-        <div className="p-5 sm:p-7">
+        <div className="scrollbar-thin overflow-auto p-5 sm:p-7">
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="mb-3 flex flex-wrap gap-2">
@@ -2009,7 +2301,7 @@ function DetailModal({
             <ContentBlock title="Khả năng nhân rộng" text={item.nhanRong} />
           </div>
           {canInteract && (
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+            <div className="sticky bottom-0 -mx-5 mt-6 flex flex-col gap-3 border-t border-[var(--line)] bg-white/95 px-5 py-4 backdrop-blur sm:-mx-7 sm:flex-row sm:px-7">
               <button className="rounded-md bg-[var(--green-600)] px-4 py-3 text-sm font-black text-white" onClick={like}>
                 Quan tâm sáng kiến này
               </button>
@@ -2021,7 +2313,7 @@ function DetailModal({
             </div>
           )}
         </div>
-      </div>
+      </aside>
     </div>
   );
 }
@@ -2033,30 +2325,25 @@ function Chatbot({
   input,
   setInput,
   send,
-  startCreate,
+  applySuggestion,
 }: {
   open: boolean;
   setOpen: (value: boolean) => void;
-  messages: { from: string; text: string }[];
+  messages: ChatMessage[];
   input: string;
   setInput: (value: string) => void;
   send: (text: string) => void;
-  startCreate: () => void;
+  applySuggestion: (suggestion: ChatSuggestion) => void;
 }) {
   const prompts = [
     "Gợi ý cho tôi sáng kiến về tiết kiệm KHCN-ĐMST",
     "Ban Quản trị nguồn nhân lực thì nên làm sáng kiến gì?",
   ];
 
-  function handleCreateFromChat() {
-    setOpen(false);
-    startCreate();
-  }
-
   return (
-    <div className="fixed bottom-4 right-4 z-40 sm:bottom-5 sm:right-5">
+    <div className="fixed inset-x-0 bottom-0 z-40 px-3 pb-3 sm:inset-auto sm:bottom-5 sm:right-5 sm:px-0 sm:pb-0">
       {open && (
-        <section className="card mb-3 flex h-[min(560px,calc(100vh-7rem))] w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl bg-white shadow-2xl sm:w-[390px]">
+        <section className="chat-panel card mb-3 flex h-[min(720px,calc(100vh-5rem))] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:h-[min(620px,calc(100vh-7rem))] sm:w-[430px] sm:rounded-xl">
           <header className="bg-[var(--navy-900)] px-4 py-3 text-white">
             <h3 className="font-black">Trợ lý AI Sáng kiến</h3>
             <p className="text-xs text-white/70">Gợi ý dựa trên dữ liệu sáng kiến đã cập nhật</p>
@@ -2071,7 +2358,31 @@ function Chatbot({
             </div>
             {messages.map((message, index) => (
               <div key={index} className={`rounded-lg p-3 text-sm leading-6 ${message.from === "bot" ? "bg-[var(--mist)] text-[var(--navy-800)]" : "ml-8 bg-[var(--green-600)] text-white"}`}>
-                {message.text}
+                <p>{message.text}</p>
+                {message.suggestions && (
+                  <div className="mt-3 grid gap-3">
+                    {message.suggestions.map((suggestion) => (
+                      <article key={suggestion.title} className="rounded-xl border border-[var(--line)] bg-white p-3">
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                          <Pill field={suggestion.field}>{suggestion.field}</Pill>
+                          <Pill tone="gold">Gợi ý AI</Pill>
+                        </div>
+                        <h4 className="font-black text-[var(--navy-900)]">{suggestion.title}</h4>
+                        <p className="mt-2 text-xs font-bold text-[var(--muted)]">Vấn đề: {suggestion.problem}</p>
+                        <p className="mt-2 text-xs font-bold text-[var(--navy-800)]">Giải pháp: {suggestion.solution}</p>
+                        <p className="mt-2 text-xs font-bold text-[var(--green-700)]">Hiệu quả: {suggestion.expectedImpact}</p>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                          <button className="rounded-md bg-[var(--green-600)] px-3 py-2 text-xs font-black text-white sm:col-span-2" onClick={() => applySuggestion(suggestion)}>
+                            Đưa vào form
+                          </button>
+                          <button className="rounded-md border border-[var(--line)] px-3 py-2 text-xs font-black text-[var(--navy-800)]" onClick={() => send(`Tìm sáng kiến tương tự với ${suggestion.title}`)}>
+                            Tìm tương tự
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -2079,14 +2390,9 @@ function Chatbot({
             <input className="min-w-0 flex-1 rounded-md border border-[var(--line)] px-3 py-2 text-sm outline-none focus:border-[var(--green-600)]" value={input} onChange={(event) => setInput(event.target.value)} placeholder="Nhập câu hỏi..." />
             <button className="rounded-md bg-[var(--green-600)] px-3 py-2 text-sm font-black text-white">Gửi</button>
           </form>
-          <div className="border-t border-[var(--line)] bg-[var(--mist)] p-3">
-            <button className="w-full rounded-md bg-[var(--navy-900)] px-3 py-2 text-sm font-black text-white" onClick={handleCreateFromChat}>
-              Dùng gợi ý để tạo sáng kiến
-            </button>
-          </div>
         </section>
       )}
-      <button className="grid h-13 w-13 place-items-center rounded-full bg-[var(--green-600)] text-white shadow-xl shadow-green-900/25 ring-4 ring-white sm:h-14 sm:w-14" onClick={() => setOpen(!open)} aria-label="Mở trợ lý AI">
+      <button className="ml-auto grid h-13 w-13 place-items-center rounded-full bg-[var(--green-600)] text-white shadow-xl shadow-green-900/25 ring-4 ring-white sm:h-14 sm:w-14" onClick={() => setOpen(!open)} aria-label="Mở trợ lý AI">
         <Bot className="h-7 w-7" />
       </button>
     </div>
@@ -2178,22 +2484,50 @@ function LeaderboardRow({ index, name, value, max, active = false, onClick }: { 
   );
 }
 
-function WordCloud() {
-  const words = ["Chuyển đổi số", "Tiết kiệm năng lượng", "An toàn lao động", "Quy trình", "Dữ liệu", "Sản xuất xanh", "Tự động hóa", "Quản trị", "Văn hóa số"];
+function WordCloud({ selectedField, onSelect }: { selectedField?: string; onSelect?: (field: Field) => void }) {
+  const words: { label: string; field: Field }[] = [
+    { label: "Chuyển đổi số", field: "Công nghệ" },
+    { label: "Tiết kiệm năng lượng", field: "Môi trường" },
+    { label: "An toàn lao động", field: "An toàn" },
+    { label: "Quy trình", field: "Quy trình" },
+    { label: "Dữ liệu", field: "Công nghệ" },
+    { label: "Sản xuất xanh", field: "Môi trường" },
+    { label: "Tự động hóa", field: "Công nghệ" },
+    { label: "Quản trị", field: "Quy trình" },
+    { label: "Văn hóa số", field: "Khác" },
+  ];
   return (
     <div className="grid min-h-48 place-items-center rounded-xl bg-[var(--mist)] p-4 text-center">
       <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-3">
         {words.map((word, index) => (
-          <span key={word} className={`${index < 2 ? "text-2xl sm:text-3xl" : index < 5 ? "text-sm" : "text-xs"} font-black`} style={{ color: index % 3 === 0 ? "var(--green-600)" : index % 3 === 1 ? "var(--blue-700)" : "var(--cyan-500)" }}>
-            {word}
-          </span>
+          <button
+            key={word.label}
+            className={`${index < 2 ? "text-2xl sm:text-3xl" : index < 5 ? "text-sm" : "text-xs"} rounded-md px-1 font-black transition hover:scale-105 ${selectedField === word.field ? "bg-white shadow-sm" : ""}`}
+            style={{ color: fieldMeta[word.field].color }}
+            onClick={() => onSelect?.(word.field)}
+            type="button"
+          >
+            {word.label}
+          </button>
         ))}
       </div>
     </div>
   );
 }
 
-function DonutChart({ total, fieldCounts, compact = false }: { total: number; fieldCounts: readonly (readonly [Field, number])[]; compact?: boolean }) {
+function DonutChart({
+  total,
+  fieldCounts,
+  compact = false,
+  selectedField,
+  onFieldSelect,
+}: {
+  total: number;
+  fieldCounts: readonly (readonly [Field, number])[];
+  compact?: boolean;
+  selectedField?: string;
+  onFieldSelect?: (field: Field) => void;
+}) {
   const colors = fieldCounts.map(([field]) => fieldMeta[field].color);
   const { segments } = fieldCounts.reduce(
     (acc, [, count], index) => {
@@ -2209,13 +2543,38 @@ function DonutChart({ total, fieldCounts, compact = false }: { total: number; fi
   );
   const gradientSegments = segments.join(", ");
   return (
-    <div className={`mx-auto grid ${compact ? "h-40 w-40" : "h-48 w-48"} place-items-center rounded-full`} style={{ background: `conic-gradient(${gradientSegments || "var(--line) 0 100%"})` }}>
-      <div className="grid h-[68%] w-[68%] place-items-center rounded-full bg-white text-center">
-        <div>
-          <p className="text-3xl font-black">{total}</p>
-          <p className="text-xs font-bold text-[var(--muted)]">sáng kiến</p>
+    <div>
+      <button
+        className={`mx-auto grid ${compact ? "h-40 w-40" : "h-48 w-48"} place-items-center rounded-full transition hover:scale-[1.02]`}
+        style={{ background: `conic-gradient(${gradientSegments || "var(--line) 0 100%"})` }}
+        onClick={() => {
+          const top = fieldCounts.slice().sort((a, b) => b[1] - a[1])[0]?.[0];
+          if (top) onFieldSelect?.(top);
+        }}
+        type="button"
+        aria-label="Lọc theo lĩnh vực có nhiều sáng kiến nhất"
+      >
+        <div className="grid h-[68%] w-[68%] place-items-center rounded-full bg-white text-center">
+          <div>
+            <p className="text-3xl font-black">{total}</p>
+            <p className="text-xs font-bold text-[var(--muted)]">sáng kiến</p>
+          </div>
         </div>
-      </div>
+      </button>
+      {onFieldSelect && (
+        <div className="mt-4 flex flex-wrap justify-center gap-2">
+          {fieldCounts.map(([field, count]) => (
+            <button
+              key={field}
+              className={`rounded-full px-2.5 py-1 text-xs font-black ${selectedField === field ? "bg-[var(--navy-900)] text-white" : "bg-[var(--mist)] text-[var(--navy-900)]"}`}
+              onClick={() => onFieldSelect(field)}
+              type="button"
+            >
+              {field} · {count}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -2229,6 +2588,8 @@ function FilterBar({
   setSelectedField,
   setSelectedStatus,
   setSearchQuery,
+  filterSummary,
+  clearFilters,
 }: {
   selectedDepartment: string;
   selectedField: string;
@@ -2238,6 +2599,8 @@ function FilterBar({
   setSelectedField: (value: string) => void;
   setSelectedStatus: (value: string) => void;
   setSearchQuery: (value: string) => void;
+  filterSummary: { key: string; label: string; value: string }[];
+  clearFilters: () => void;
 }) {
   const controls = (
     <>
@@ -2255,6 +2618,9 @@ function FilterBar({
     <>
       <div className="card sticky top-[76px] z-20 hidden gap-3 rounded-xl p-4 md:grid md:grid-cols-[1fr_1fr_1fr_1.2fr]">
         {controls}
+        <div className="md:col-span-4">
+          <ActiveFilterChips filters={filterSummary} clearFilters={clearFilters} compact />
+        </div>
       </div>
       <details className="card sticky top-16 z-20 rounded-xl p-3 md:hidden">
         <summary className="flex cursor-pointer list-none items-center justify-between rounded-lg bg-[var(--mist)] px-3 py-3 text-sm font-black text-[var(--navy-900)]">
@@ -2263,9 +2629,38 @@ function FilterBar({
         </summary>
         <div className="mt-3 grid gap-3">
           {controls}
+          <ActiveFilterChips filters={filterSummary} clearFilters={clearFilters} compact />
         </div>
       </details>
     </>
+  );
+}
+
+function ActiveFilterChips({
+  filters,
+  clearFilters,
+  compact = false,
+}: {
+  filters: { key: string; label: string; value: string }[];
+  clearFilters: () => void;
+  compact?: boolean;
+}) {
+  if (filters.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className={`flex flex-wrap items-center gap-2 ${compact ? "mt-1" : "mb-4"}`}>
+      {filters.map((filter) => (
+        <span key={`${filter.key}-${filter.value}`} className="active-filter-chip">
+          <span className="text-[var(--muted)]">{filter.label}</span>
+          {filter.value}
+        </span>
+      ))}
+      <button className="rounded-full border border-[var(--line)] bg-white px-3 py-1.5 text-xs font-black text-[var(--navy-800)]" onClick={clearFilters}>
+        Xóa bộ lọc
+      </button>
+    </div>
   );
 }
 

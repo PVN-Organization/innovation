@@ -288,7 +288,7 @@ export function useInitiativeForm({
 
       await apiSubmit(fd);
       await refreshInitiatives();
-      setFormMessage("Đã gửi sáng kiến thành công.");
+      setFormMessage("Đã gửi sáng kiến. Hồ sơ đã chuyển sang trạng thái Chờ duyệt.");
     } catch {
       const now = new Date();
       const pad = (n: number) => String(n).padStart(2, "0");
@@ -342,6 +342,31 @@ export function useInitiativeForm({
     setEditingId(null);
     setAuthorMode("solo");
     setFormMessage("");
+  }
+
+  function prefillFormFromSuggestion(data: Partial<FormState>) {
+    setForm((current) => {
+      const next = {
+        ...current,
+        ...data,
+        danhSachTacGia: data.danhSachTacGia ?? current.danhSachTacGia,
+      };
+
+      const first = next.danhSachTacGia[0];
+      if (!first) return next;
+
+      const authors = [...next.danhSachTacGia];
+      authors[0] = {
+        ...first,
+        donVi: data.donVi ?? first.donVi,
+        email: data.email ?? first.email,
+      };
+
+      return { ...next, danhSachTacGia: authors };
+    });
+    setEditingId(null);
+    setAuthorMode((data.danhSachTacGia?.length ?? 1) > 1 ? "team" : "solo");
+    setFormMessage("Đã đưa gợi ý AI vào biểu mẫu. Bạn có thể chỉnh sửa trước khi gửi.");
   }
 
   function getAuthorsForEdit(initiative: Initiative): AuthorEntry[] {
@@ -462,6 +487,7 @@ export function useInitiativeForm({
     handleSubmit,
     clearForm,
     resetForm,
+    prefillFormFromSuggestion,
     exportDocx,
     startEdit,
   };
