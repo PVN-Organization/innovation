@@ -224,7 +224,9 @@ export function useInitiatives() {
   }, []);
 
   useEffect(() => {
-    void refresh();
+    queueMicrotask(() => {
+      void refresh();
+    });
   }, [refresh]);
 
   const optimisticLike = useCallback((id: number) => {

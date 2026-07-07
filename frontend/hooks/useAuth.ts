@@ -26,7 +26,9 @@ export function useAuth() {
   }, []);
 
   useEffect(() => {
-    fetchMe();
+    queueMicrotask(() => {
+      void fetchMe();
+    });
   }, [fetchMe]);
 
   const login = useCallback(() => {
