@@ -15,6 +15,7 @@ import type { AuthorEntry, Field, FormState, Initiative, Status } from "@/lib/ty
 
 type Role = "guest" | "employee" | "admin";
 type View = "landing" | "initiatives" | "stats" | "competition" | "guide" | "admin";
+type InsightsTab = "overview" | "competition" | "data";
 type FilterKind = "department" | "field" | "status" | "author";
 type ChatSuggestion = {
   title: string;
@@ -165,6 +166,23 @@ const innovators = [
   },
 ];
 
+function compactNumber(value: number) {
+  if (value >= 1000) return `${(value / 1000).toFixed(value >= 10000 ? 0 : 1)}K`;
+  return String(value);
+}
+
+function buildDonutGradient(fieldCounts: readonly (readonly [Field, number])[]) {
+  const total = fieldCounts.reduce((sum, [, count]) => sum + count, 0);
+  let current = 0;
+  const segments = fieldCounts.map(([field, count]) => {
+    const start = current;
+    const size = total === 0 ? 0 : (count / total) * 100;
+    current += size;
+    return `${fieldMeta[field].color} ${start}% ${current}%`;
+  });
+  return `conic-gradient(${segments.join(", ") || "var(--line) 0 100%"})`;
+}
+
 export default function Home() {
   const { user: authUser } = useAuth();
   const {
@@ -188,6 +206,7 @@ export default function Home() {
   const [adminStatus, setAdminStatus] = useState("Tất cả");
   const [adminSearch, setAdminSearch] = useState("");
   const [range, setRange] = useState("Tháng này");
+  const [insightsTab, setInsightsTab] = useState<InsightsTab>("competition");
   const [initiativeMode, setInitiativeMode] = useState<"list" | "form">("list");
   const [selectedInitiative, setSelectedInitiative] = useState<Initiative | null>(null);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
@@ -238,13 +257,19 @@ export default function Home() {
   }
 
   function go(nextView: View) {
-    if (nextView === "stats" && !isAuthed) {
-      setShowLoginPrompt(true);
+    if (nextView === "stats") {
+      setInsightsTab(isAuthed ? "data" : "overview");
+      setView("competition");
+      setMobileOpen(false);
+      setChatOpen(false);
       return;
     }
     if (nextView === "admin" && !isAdmin) {
       setShowLoginPrompt(true);
       return;
+    }
+    if (nextView === "competition") {
+      setInsightsTab("competition");
     }
     setView(nextView);
     setMobileOpen(false);
@@ -363,6 +388,11 @@ export default function Home() {
     if (kind === "author") setSearchQuery(value);
     setTablePulse(true);
     window.setTimeout(() => setTablePulse(false), 900);
+    if (targetView === "stats") {
+      setInsightsTab("data");
+      setView("competition");
+      return;
+    }
     if (targetView) setView(targetView);
   }
 
@@ -567,13 +597,9 @@ export default function Home() {
           filtered={publicFiltered}
           departmentCounts={departmentCounts}
           fieldCounts={fieldCounts}
-          leaderBoard={leaderBoard}
           totals={totals}
-          selectedDepartment={selectedDepartment}
           selectedField={selectedField}
           filterSummary={filterSummary}
-          setSelectedDepartment={setSelectedDepartment}
-          setSelectedField={setSelectedField}
           applyChartFilter={applyChartFilter}
           clearFilters={clearFilters}
           startCreate={startCreate}
@@ -624,9 +650,13 @@ export default function Home() {
         />
       )}
 
-      {view === "stats" && (
-        <StatsPage
+      {view === "competition" && (
+        <CompetitionPage
           isAuthed={isAuthed}
+          activeTab={insightsTab}
+          setActiveTab={setInsightsTab}
+          range={range}
+          setRange={setRange}
           items={detailedFiltered}
           initiatives={initiatives}
           totals={totals}
@@ -643,25 +673,11 @@ export default function Home() {
           setSearchQuery={setSearchQuery}
           filterSummary={filterSummary}
           clearFilters={clearFilters}
-          applyChartFilter={applyChartFilter}
           openDetails={openDetails}
           likeInitiative={likeInitiative}
-          login={loginEmployee}
-          tablePulse={tablePulse}
-        />
-      )}
-
-      {view === "competition" && (
-        <CompetitionPage
-          isAuthed={isAuthed}
-          range={range}
-          setRange={setRange}
-          initiatives={initiatives}
-          departmentCounts={departmentCounts}
-          leaderBoard={leaderBoard}
-          openDetails={openDetails}
           applyChartFilter={applyChartFilter}
           login={loginEmployee}
+          tablePulse={tablePulse}
         />
       )}
 
@@ -765,8 +781,7 @@ function Navigation({
   const navItems: { id: View; label: string; icon: LucideIcon; visible: boolean }[] = [
     { id: "landing", label: "Trang chủ", icon: HomeIcon, visible: true },
     { id: "initiatives", label: "Sáng kiến", icon: PenLine, visible: true },
-    { id: "stats", label: "Thống kê", icon: BarChart3, visible: true },
-    { id: "competition", label: "Thi đua", icon: Trophy, visible: true },
+    { id: "competition", label: "Thi đua & Thống kê", icon: Trophy, visible: true },
     { id: "guide", label: "Hướng dẫn", icon: BookOpen, visible: true },
     { id: "admin", label: "Quản trị", icon: ShieldCheck, visible: isAdmin },
   ];
@@ -782,8 +797,8 @@ function Navigation({
   }
 
   return (
-    <header className="top-nav sticky top-0 z-40">
-      <div className="app-container grid h-16 grid-cols-[minmax(260px,310px)_minmax(0,1fr)_auto] items-center gap-3 lg:h-[76px]">
+    <header className="top-nav fixed inset-x-0 top-0 z-40">
+      <div className="app-container grid h-16 grid-cols-[minmax(230px,290px)_minmax(0,1fr)_auto] items-center gap-3 lg:h-[76px]">
         <button className="focus-ring flex min-w-0 items-center gap-3 text-left" onClick={() => go("landing")}>
           <img src="/logo-pvn.png" alt="Petrovietnam" className="h-10 w-auto object-contain" />
           <span className="min-w-0 leading-tight">
@@ -796,18 +811,19 @@ function Navigation({
           </span>
         </button>
 
-        <nav className="hidden min-w-0 items-center justify-center gap-0.5 xl:flex">
+        <nav className="hidden min-w-0 items-center justify-center gap-5 min-[1360px]:flex">
           {visibleNavItems.map((item) => {
             const Icon = item.icon;
             return (
               <button
                 key={item.id}
-                className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-2 text-sm font-bold transition ${
+                className={`top-nav-link inline-flex items-center gap-1.5 whitespace-nowrap px-0.5 py-2 text-sm font-bold transition ${
                   view === item.id
-                    ? "bg-[var(--navy-900)] text-white shadow-md shadow-[var(--navy-900)]/15"
-                    : "bg-white/70 text-[var(--navy-800)] hover:bg-white"
+                    ? "is-active text-[var(--navy-900)]"
+                    : "text-[var(--navy-800)] hover:text-[var(--green-700)]"
                 }`}
                 onClick={() => handleGo(item.id)}
+                aria-current={view === item.id ? "page" : undefined}
               >
                 <Icon className="hidden h-4 w-4 2xl:block" />
                 {item.label}
@@ -816,7 +832,7 @@ function Navigation({
           })}
         </nav>
 
-        <div className="hidden shrink-0 items-center gap-2 xl:flex">
+        <div className="hidden shrink-0 items-center gap-2 min-[1360px]:flex">
           {isGuest ? (
             <>
               <button
@@ -863,7 +879,7 @@ function Navigation({
         </div>
 
         <button
-          className="grid h-10 w-10 place-items-center rounded-md border border-[var(--line)] bg-white text-[var(--navy-900)] xl:hidden"
+          className="grid h-10 w-10 place-items-center rounded-md border border-[var(--line)] bg-white text-[var(--navy-900)] min-[1360px]:hidden"
           onClick={() => setMobileOpen(!mobileOpen)}
           aria-label={mobileOpen ? "Đóng menu" : "Mở menu"}
         >
@@ -872,7 +888,7 @@ function Navigation({
       </div>
 
       {mobileOpen && (
-        <div className="border-t border-[var(--line)] bg-white/96 px-4 py-4 shadow-xl xl:hidden">
+        <div className="border-t border-[var(--line)] bg-white/96 px-4 py-4 shadow-xl min-[1360px]:hidden">
           <div className="mx-auto grid max-w-7xl gap-2">
             <div className="mb-2 rounded-lg bg-[var(--mist)] px-3 py-2 text-sm font-black text-[var(--navy-800)]">
               {roleLabel}
@@ -935,9 +951,7 @@ function LandingPage({
   filtered,
   departmentCounts,
   fieldCounts,
-  leaderBoard,
   totals,
-  selectedDepartment,
   selectedField,
   filterSummary,
   applyChartFilter,
@@ -953,9 +967,7 @@ function LandingPage({
   filtered: Initiative[];
   departmentCounts: [string, number][];
   fieldCounts: readonly (readonly [Field, number])[];
-  leaderBoard: { ten: string; donVi: string; soSangKien: number }[];
   totals: { approved: number; pending: number; interests: number; topField: Field };
-  selectedDepartment: string;
   selectedField: string;
   filterSummary: { key: string; label: string; value: string }[];
   applyChartFilter: (kind: FilterKind, value: string, targetView?: View) => void;
@@ -968,253 +980,315 @@ function LandingPage({
 }) {
   return (
     <>
-      <section className="energy-flow relative min-h-[520px] overflow-hidden bg-white text-[var(--navy-900)] sm:min-h-[560px]">
+      <section className="energy-flow campaign-hero relative min-h-[520px] overflow-hidden bg-white text-[var(--navy-900)] sm:min-h-[560px]">
         <img
           src="/visuals/hero-green-innovation-flow.png"
           alt="Dòng chảy sáng kiến xanh số"
           className="absolute inset-0 h-full w-full object-cover object-center"
         />
-        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.98)_0%,rgba(255,255,255,0.94)_28%,rgba(255,255,255,0.62)_48%,rgba(255,255,255,0.1)_78%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.98)_0%,rgba(255,255,255,0.9)_31%,rgba(255,255,255,0.42)_58%,rgba(255,255,255,0.08)_82%)]" />
         <div className="absolute inset-x-0 bottom-0 h-24 bg-[linear-gradient(180deg,transparent,var(--mist))]" />
         <div className="energy-grid absolute inset-0 opacity-55" />
-        <div className="pointer-events-none absolute right-[9%] top-[20%] hidden xl:block">
-          <span className="idea-chip">AI</span>
-        </div>
-        <div className="pointer-events-none absolute right-[23%] top-[42%] hidden lg:block">
-          <span className="idea-chip idea-chip-cyan">Dữ liệu</span>
-        </div>
-        <div className="pointer-events-none absolute right-[34%] top-[58%] hidden lg:block">
-          <span className="idea-chip idea-chip-gold">Ý tưởng xanh</span>
-        </div>
-        <div className="app-container relative z-10 pb-16 pt-12 sm:pb-20 sm:pt-16 lg:pb-24 lg:pt-20">
-          <div className="max-w-[650px]">
-            <h1 className="text-balance text-[2.15rem] font-black leading-[1.05] text-[var(--navy-900)] sm:text-6xl lg:text-[4.45rem]">
+        <div className="app-container relative z-10 pb-16 pt-24 sm:pb-20 sm:pt-28 lg:pb-24 lg:pt-32">
+          <div className="max-w-[760px]">
+            <p className="mb-3 w-fit rounded-full bg-white/80 px-4 py-2 text-xs font-black uppercase text-[var(--green-700)] shadow-sm">
               Cổng thông tin sáng kiến Công đoàn Công ty Mẹ
+            </p>
+            <h1 className="campaign-title text-balance text-[2.75rem] font-black leading-[0.98] text-[var(--navy-900)] sm:text-6xl lg:text-[5rem]">
+              Ý tưởng hôm nay, giá trị ngày mai
             </h1>
             <p className="mt-5 max-w-xl text-base font-semibold leading-8 text-[var(--navy-800)] sm:text-lg">
-              Đóng góp ý tưởng, tìm cảm hứng với AI, lan tỏa thi đua đổi mới.
+              Đóng góp ý tưởng, tìm cảm hứng với AI, lan tỏa thi đua đổi mới trong Công ty Mẹ.
             </p>
-            <div className="mt-7 grid max-w-3xl grid-cols-3 gap-2 sm:gap-3">
-              <ActionTile icon={PenLine} title="Tạo sáng kiến" description="Đề xuất ý tưởng, giải pháp vì tổ chức và người lao động" locked={!isAuthed} onClick={startCreate} />
-              <ActionTile icon={Bot} title="Hỏi AI" description="Tìm cảm hứng, gợi ý giải pháp phù hợp với nhu cầu của bạn" locked={!isAuthed} onClick={openChat} />
-              <ActionTile icon={BarChart3} title="Xem chi tiết" description="Xem chi tiết sáng kiến, số liệu và báo cáo đầy đủ" locked={!isAuthed} onClick={() => (isAuthed ? go("stats") : showLogin())} />
+            <div className="mt-7 grid max-w-xl grid-cols-2 gap-3 sm:grid-cols-4">
+              <CampaignMetric icon={Lightbulb} value={String(initiatives.length)} label="Sáng kiến" color="var(--green-600)" />
+              <CampaignMetric icon={Heart} value={compactNumber(totals.interests)} label="Quan tâm" color="var(--green-500)" />
+              <CampaignMetric icon={Trophy} value={String(departmentCounts.length)} label="Đơn vị" color="var(--gold-500)" />
+              <CampaignMetric icon={Users} value={String(fields.length)} label="Lĩnh vực" color="var(--blue-700)" />
+            </div>
+            <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+              <button className="rounded-md bg-[var(--green-600)] px-5 py-3 text-sm font-black text-white shadow-lg shadow-green-900/15" onClick={startCreate}>
+                Viết sáng kiến
+              </button>
+              <button className="rounded-md border border-[var(--green-600)] bg-white/85 px-5 py-3 text-sm font-black text-[var(--green-700)]" onClick={openChat}>
+                Hỏi AI
+              </button>
             </div>
           </div>
         </div>
       </section>
 
       <section className="app-container relative z-10 mt-4 lg:-mt-4">
-        <div className="card grid overflow-hidden rounded-xl md:grid-cols-[repeat(4,1fr)_1.3fr]">
-          <StatTile icon={Lightbulb} value={String(initiatives.length)} label="sáng kiến mới cập nhật" caption="Tuần này" color="var(--green-600)" />
-          <StatTile icon={Users} value={String(fields.length)} label="lĩnh vực đổi mới trọng tâm" caption="Đang theo dõi" color="var(--blue-700)" />
-          <StatTile icon={Heart} value={String(totals.interests)} label="lượt quan tâm" caption="Tháng này" color="var(--green-500)" />
-          <StatTile icon={Trophy} value={String(departmentCounts.length)} label="Ban/Văn phòng tham gia thi đua" caption="Toàn Công ty Mẹ" color="var(--gold-500)" />
-          <div className="border-t border-[var(--line)] p-5 md:border-l md:border-t-0">
-            <p className="font-black">Đăng nhập để trải nghiệm đầy đủ</p>
-            <p className="mt-2 text-sm leading-6 text-[var(--muted)]">Đăng nhập để tạo sáng kiến, xem chi tiết, kết nối và thi đua cùng đồng nghiệp.</p>
-            {!isAuthed && (
-              <button className="mt-4 rounded-md bg-[var(--green-600)] px-4 py-2 text-sm font-black text-white" onClick={showLogin}>
-                Đăng nhập tài khoản Tập đoàn
-              </button>
-            )}
+        <div className="grid gap-4 lg:grid-cols-[1fr_330px]">
+          <div className="card grid overflow-hidden rounded-xl md:grid-cols-4">
+            <LandingShortcut icon={Trophy} title="Top Ban/Văn phòng" text="Có nhiều sáng kiến nhất" action="Xem bảng thi đua" onClick={() => go("competition")} color="var(--gold-500)" />
+            <LandingShortcut icon={Users} title="Top cá nhân" text="Truyền cảm hứng đổi mới" action="Xem chi tiết" onClick={() => go("competition")} color="var(--green-600)" />
+            <LandingShortcut icon={Heart} title="Sáng kiến được quan tâm" text="Nhiều hưởng ứng nhất" action="Khám phá ngay" onClick={() => (isAuthed ? go("initiatives") : showLogin())} color="var(--green-500)" />
+            <LandingShortcut icon={BarChart3} title="Tỷ lệ sáng kiến" text="Theo lĩnh vực trọng tâm" action="Xem biểu đồ" onClick={() => (isAuthed ? go("stats") : showLogin())} color="var(--blue-700)" />
           </div>
+          <LandingAiCard isAuthed={isAuthed} openChat={openChat} showLogin={showLogin} />
         </div>
       </section>
 
-      <JourneyStrip isAuthed={isAuthed} startCreate={startCreate} openChat={openChat} go={go} showLogin={showLogin} />
-
       <BasicStats
+        isAuthed={isAuthed}
         filtered={filtered}
         departmentCounts={departmentCounts}
         fieldCounts={fieldCounts}
-        leaderBoard={leaderBoard}
-        selectedDepartment={selectedDepartment}
         selectedField={selectedField}
         filterSummary={filterSummary}
         applyChartFilter={applyChartFilter}
         clearFilters={clearFilters}
         showLogin={showLogin}
+        openDetails={openDetails}
         go={go}
       />
-
-      <section className="app-container pb-8">
-        <SectionTitle title="Sáng kiến được quan tâm" />
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-          {filtered
-            .slice()
-            .sort((a, b) => b.quanTam - a.quanTam)
-            .slice(0, 5)
-            .map((item) => (
-              <InitiativeCard key={item.id} item={item} canOpen={isAuthed} onOpen={openDetails} compact />
-            ))}
-        </div>
-      </section>
 
       <HonorFooter />
     </>
   );
 }
 
-function JourneyStrip({
-  isAuthed,
-  startCreate,
-  openChat,
-  go,
-  showLogin,
-}: {
-  isAuthed: boolean;
-  startCreate: () => void;
-  openChat: () => void;
-  go: (view: View) => void;
-  showLogin: () => void;
-}) {
-  const items = [
-    {
-      icon: Sparkles,
-      title: "Guest: xem phong trào",
-      text: "Theo dõi thống kê cơ bản, leaderboard và sáng kiến nổi bật trước khi đăng nhập.",
-      action: "Xem thi đua",
-      onClick: () => go("competition"),
-    },
-    {
-      icon: Bot,
-      title: "Employee: tìm cảm hứng với AI",
-      text: "Dùng prompt mẫu để khám phá ý tưởng theo lĩnh vực, đơn vị và dữ liệu sáng kiến.",
-      action: isAuthed ? "Hỏi AI" : "Đăng nhập để hỏi AI",
-      onClick: isAuthed ? openChat : showLogin,
-    },
-    {
-      icon: FileText,
-      title: "Đóng góp và lưu trữ",
-      text: "Điền form, xem preview Word, xuất DOCX và gửi vào kho dữ liệu quản trị.",
-      action: isAuthed ? "Tạo sáng kiến" : "Đăng nhập để gửi",
-      onClick: isAuthed ? startCreate : showLogin,
-    },
-  ];
-
+function CampaignMetric({ icon: Icon, value, label, color }: { icon: LucideIcon; value: string; label: string; color: string }) {
   return (
-    <section className="app-container py-8">
-      <div className="grid gap-4 lg:grid-cols-3">
-        {items.map((item) => {
-          const Icon = item.icon;
-          return (
-            <article key={item.title} className="card-soft rounded-xl p-5">
-              <Icon className="h-8 w-8 text-[var(--green-600)]" />
-              <h3 className="mt-4 text-lg font-black text-[var(--navy-900)]">{item.title}</h3>
-              <p className="mt-2 min-h-12 text-sm leading-6 text-[var(--muted)]">{item.text}</p>
-              <button className="mt-4 rounded-md bg-[var(--navy-900)] px-4 py-2 text-sm font-black text-white" onClick={item.onClick}>
-                {item.action}
-              </button>
-            </article>
-          );
-        })}
+    <div className="campaign-metric rounded-xl bg-white/82 p-3 shadow-sm backdrop-blur">
+      <Icon className="h-6 w-6" style={{ color }} />
+      <p className="mt-2 text-2xl font-black leading-none" style={{ color }}>{value}</p>
+      <p className="mt-1 text-xs font-black text-[var(--navy-800)]">{label}</p>
+    </div>
+  );
+}
+
+function LandingShortcut({
+  icon: Icon,
+  title,
+  text,
+  action,
+  onClick,
+  color,
+}: {
+  icon: LucideIcon;
+  title: string;
+  text: string;
+  action: string;
+  onClick: () => void;
+  color: string;
+}) {
+  return (
+    <button className="group border-b border-[var(--line)] p-5 text-left transition hover:bg-[var(--mist)] md:border-b-0 md:border-r" onClick={onClick}>
+      <div className="flex items-start gap-3">
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white shadow-sm" style={{ color }}>
+          <Icon className="h-6 w-6" />
+        </span>
+        <span className="min-w-0">
+          <span className="block font-black text-[var(--navy-900)]">{title}</span>
+          <span className="mt-1 block text-sm font-semibold leading-5 text-[var(--muted)]">{text}</span>
+          <span className="mt-3 block text-xs font-black text-[var(--green-700)] group-hover:underline">{action} →</span>
+        </span>
       </div>
-    </section>
+    </button>
+  );
+}
+
+function LandingAiCard({ isAuthed, openChat, showLogin }: { isAuthed: boolean; openChat: () => void; showLogin: () => void }) {
+  const prompts = ["Tiết kiệm chi phí", "Nâng cao an toàn", "Tối ưu quy trình", "Chuyển đổi số"];
+  return (
+    <article className="card relative overflow-hidden rounded-xl p-5">
+      <div className="absolute right-4 top-4 h-2.5 w-2.5 rounded-full bg-[var(--green-500)] shadow-[0_0_0_6px_rgba(25,169,87,0.12)]" />
+      <div className="flex items-center gap-4">
+        <div className="ai-bot-illustration shrink-0" aria-hidden="true" />
+        <div>
+          <h3 className="font-black text-[var(--navy-900)]">Trò chuyện cùng AI</h3>
+          <p className="mt-1 text-sm leading-5 text-[var(--muted)]">Gợi ý ý tưởng, tìm cảm hứng từ kho sáng kiến.</p>
+        </div>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        {prompts.map((prompt) => (
+          <button key={prompt} className="rounded-full bg-[var(--mist)] px-3 py-1.5 text-xs font-black text-[var(--navy-800)]" onClick={isAuthed ? openChat : showLogin}>
+            {prompt}
+          </button>
+        ))}
+      </div>
+      <button className="mt-5 w-full rounded-md bg-[var(--green-600)] px-4 py-3 text-sm font-black text-white" onClick={isAuthed ? openChat : showLogin}>
+        {isAuthed ? "Mở trợ lý AI" : "Đăng nhập để hỏi AI"}
+      </button>
+    </article>
   );
 }
 
 function BasicStats({
+  isAuthed,
   filtered,
   departmentCounts,
   fieldCounts,
-  leaderBoard,
-  selectedDepartment,
   selectedField,
   filterSummary,
   applyChartFilter,
   clearFilters,
   showLogin,
+  openDetails,
   go,
 }: {
+  isAuthed: boolean;
   filtered: Initiative[];
   departmentCounts: [string, number][];
   fieldCounts: readonly (readonly [Field, number])[];
-  leaderBoard: { ten: string; donVi: string; soSangKien: number }[];
-  selectedDepartment: string;
   selectedField: string;
   filterSummary: { key: string; label: string; value: string }[];
   applyChartFilter: (kind: FilterKind, value: string, targetView?: View) => void;
   clearFilters: () => void;
   showLogin: () => void;
+  openDetails: (item: Initiative) => void;
   go: (view: View) => void;
 }) {
   const maxDepartment = Math.max(...departmentCounts.map(([, count]) => count), 1);
-  const maxField = Math.max(...fieldCounts.map(([, count]) => count), 1);
+  const topInitiatives = filtered.slice().sort((a, b) => b.quanTam - a.quanTam).slice(0, 3);
 
   return (
-    <section className="app-container py-10 lg:py-14">
+    <section className="app-container py-7 lg:py-9">
       <SectionTitle title="Trang thống kê cơ bản" icon={Sparkles} />
       <ActiveFilterChips filters={filterSummary.filter((item) => item.key !== "status" && item.key !== "search")} clearFilters={clearFilters} />
-      <div className="grid gap-4 lg:grid-cols-12">
-        <ChartPanel className="lg:col-span-3" title="Top Ban/Văn phòng" action={() => go("competition")}>
-          <div className="space-y-3">
-            {departmentCounts.slice(0, 8).map(([name, count], index) => (
-              <LeaderboardRow
-                key={name}
-                index={index + 1}
-                name={name}
-                value={count}
-                active={selectedDepartment === name}
-                max={maxDepartment}
-                onClick={() => applyChartFilter("department", name)}
-              />
-            ))}
+      <div className="landing-dashboard overflow-hidden rounded-xl lg:grid lg:grid-cols-[1fr_1.08fr_1fr]">
+        <section className="landing-dashboard-panel border-b border-[var(--line)] p-5 lg:border-b-0 lg:border-r">
+          <h3 className="text-2xl font-black leading-tight text-[var(--navy-900)]">Bảng thi đua</h3>
+          <div className="mt-5 grid grid-cols-3 rounded-lg bg-[var(--mist)] p-1 text-center text-xs font-black text-[var(--muted)]">
+            <button className="rounded-md bg-white px-2 py-2 text-[var(--green-700)] shadow-sm">Theo ban/văn phòng</button>
+            <button className="px-2 py-2" onClick={() => go("competition")}>Theo cá nhân</button>
+            <button className="px-2 py-2" onClick={() => go("stats")}>Theo lĩnh vực</button>
           </div>
-        </ChartPanel>
-
-        <ChartPanel className="lg:col-span-3" title="Top cá nhân" action={() => go("competition")}>
-          <div className="space-y-3">
-            {leaderBoard.map((person, index) => (
-              <button key={person.ten} className="flex w-full items-center gap-3 rounded-lg bg-[var(--mist)] p-3 text-left" onClick={() => applyChartFilter("author", person.ten, "stats")}>
-                <Avatar name={person.ten} index={index} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-black">{person.ten}</p>
-                  <p className="truncate text-xs font-semibold text-[var(--muted)]">{person.donVi}</p>
-                </div>
-                <span className="text-sm font-black text-[var(--navy-900)]">{person.soSangKien}</span>
+          <div className="mt-5 space-y-3">
+            {departmentCounts.slice(0, 5).map(([name, count], index) => (
+              <button key={name} className="grid w-full grid-cols-[32px_1fr_34px] items-center gap-3 text-left" onClick={() => applyChartFilter("department", name)}>
+                <span className={`grid h-7 w-7 place-items-center rounded-full text-xs font-black ${index < 3 ? "bg-[var(--gold-500)] text-white" : "bg-[var(--mist)] text-[var(--navy-800)]"}`}>
+                  {index + 1}
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-bold text-[var(--navy-900)]">{name}</span>
+                  <span className="mt-2 block h-2 rounded-full bg-[var(--mist)]">
+                    <span className="block h-2 rounded-full bg-[var(--green-600)]" style={{ width: `${(count / maxDepartment) * 100}%` }} />
+                  </span>
+                </span>
+                <span className="text-right text-sm font-black">{count}</span>
               </button>
             ))}
           </div>
-        </ChartPanel>
+          <button className="mt-5 rounded-md border border-[var(--line)] bg-white px-4 py-2 text-sm font-black text-[var(--green-700)]" onClick={() => go("competition")}>
+            Xem đầy đủ bảng xếp hạng →
+          </button>
+        </section>
 
-        <ChartPanel className="lg:col-span-3" title="Lĩnh vực" action={() => showLogin()}>
-          <WordCloud selectedField={selectedField} onSelect={(field) => applyChartFilter("field", field)} />
-          <div className="mt-5 flex flex-wrap gap-2">
-            {fields.map((field) => (
-              <button
-                key={field}
-                className={`rounded-full px-3 py-1.5 text-xs font-black ${
-                  selectedField === field ? "bg-[var(--green-600)] text-white" : "bg-[var(--mist)] text-[var(--navy-900)]"
-                }`}
-                onClick={() => applyChartFilter("field", field)}
-              >
-                {field}
+        <section className="landing-dashboard-panel border-b border-[var(--line)] p-5 lg:border-b-0 lg:border-r">
+          <div className="flex items-start justify-between gap-3">
+            <h3 className="font-black text-[var(--navy-900)]">Sáng kiến theo lĩnh vực</h3>
+            <button className="rounded-md border border-[var(--line)] bg-white px-3 py-2 text-xs font-black text-[var(--muted)]" onClick={() => go("stats")}>
+              Năm 2024
+            </button>
+          </div>
+          <FieldFlowChart
+            total={filtered.length}
+            fieldCounts={fieldCounts}
+            selectedField={selectedField}
+            onFieldSelect={(field) => applyChartFilter("field", field)}
+          />
+          <p className="mt-3 text-xs font-semibold text-[var(--muted)]">Nhấp vào biểu đồ để xem chi tiết theo từng lĩnh vực.</p>
+        </section>
+
+        <section className="landing-dashboard-panel p-5">
+          <div className="flex items-start justify-between gap-3">
+            <h3 className="font-black text-[var(--navy-900)]">Top sáng kiến được quan tâm</h3>
+            <button className="rounded-md border border-[var(--line)] bg-white px-3 py-2 text-xs font-black text-[var(--muted)]" onClick={() => go("competition")}>
+              Tháng này
+            </button>
+          </div>
+          <div className="mt-5 divide-y divide-[var(--line)]">
+            {topInitiatives.map((item, index) => (
+              <button key={item.id} className="grid w-full grid-cols-[54px_28px_1fr_auto] items-center gap-3 py-3 text-left" onClick={() => (isAuthed ? openDetails(item) : showLogin())}>
+                <img src={fieldMeta[item.linhVuc].image} alt="" className="h-12 w-12 rounded-lg object-cover" />
+                <span className="grid h-7 w-7 place-items-center rounded-md bg-[var(--blue-100)] text-sm font-black text-[var(--blue-700)]">{index + 1}</span>
+                <span className="min-w-0">
+                  <span className="line-clamp-1 text-sm font-black text-[var(--navy-900)]">{item.ten}</span>
+                  <span className="mt-1 block truncate text-xs font-semibold text-[var(--muted)]">{item.tacGia} · {item.donVi}</span>
+                </span>
+                <span className="flex items-center gap-1 text-sm font-black text-[var(--green-600)]">
+                  <Heart className="h-4 w-4" /> {item.quanTam}
+                </span>
               </button>
             ))}
           </div>
-        </ChartPanel>
-
-        <ChartPanel className="lg:col-span-3" title="Tỷ lệ sáng kiến theo lĩnh vực" action={() => go("stats")}>
-          <DonutChart total={filtered.length} fieldCounts={fieldCounts} selectedField={selectedField} onFieldSelect={(field) => applyChartFilter("field", field)} />
-          <div className="mt-5 space-y-2">
-            {fieldCounts.map(([field, count]) => (
-              <button key={field} className="w-full text-left" onClick={() => applyChartFilter("field", field)}>
-                <div className="mb-1 flex justify-between text-xs font-black">
-                  <span>{field}</span>
-                  <span>{count}</span>
-                </div>
-                <div className="h-2 rounded-full bg-[var(--mist)]">
-                  <div
-                    className="h-2 rounded-full"
-                    style={{ width: `${count === 0 ? 3 : (count / maxField) * 100}%`, backgroundColor: fieldMeta[field].color }}
-                  />
-                </div>
-              </button>
-            ))}
-          </div>
-        </ChartPanel>
+          <button className="mt-4 w-full rounded-md border border-[var(--line)] bg-white px-4 py-2 text-sm font-black text-[var(--green-700)]" onClick={() => (isAuthed ? go("initiatives") : showLogin())}>
+            Xem tất cả sáng kiến →
+          </button>
+        </section>
       </div>
     </section>
+  );
+}
+
+function FieldFlowChart({
+  total,
+  fieldCounts,
+  selectedField,
+  onFieldSelect,
+}: {
+  total: number;
+  fieldCounts: readonly (readonly [Field, number])[];
+  selectedField: string;
+  onFieldSelect: (field: Field) => void;
+}) {
+  const segments = fieldCounts.map(([field, count], index) => ({
+    field,
+    count,
+    color: fieldMeta[field].color,
+    y: 38 + index * 34,
+    width: 20 + Math.max(12, count * 10),
+  }));
+  const conic = buildDonutGradient(fieldCounts);
+
+  return (
+    <div className="mt-4 grid gap-4 sm:grid-cols-[1.1fr_150px] sm:items-center">
+      <svg className="h-44 w-full" viewBox="0 0 330 190" role="img" aria-label="Luồng sáng kiến theo lĩnh vực">
+        {segments.map((segment, index) => (
+          <g
+            key={segment.field}
+            className="cursor-pointer"
+            role="button"
+            tabIndex={0}
+            onClick={() => onFieldSelect(segment.field)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") onFieldSelect(segment.field);
+            }}
+          >
+            <path
+              d={`M8 ${segment.y} C 92 ${segment.y - 18}, 134 ${segment.y + 18}, 210 ${segment.y - 2}`}
+              fill="none"
+              stroke={segment.color}
+              strokeWidth={segment.width}
+              strokeLinecap="round"
+              opacity={selectedField !== "Tất cả" && selectedField !== segment.field ? 0.28 : 0.82}
+            />
+            <circle cx="8" cy={segment.y} r="4" fill={segment.color} />
+            <text x="226" y={42 + index * 28} fill="var(--navy-800)" fontSize="11" fontWeight="800">{segment.field}</text>
+          </g>
+        ))}
+      </svg>
+      <div className="mx-auto grid h-36 w-36 place-items-center rounded-full" style={{ background: conic }}>
+        <button className="grid h-[66%] w-[66%] place-items-center rounded-full bg-white text-center shadow-inner" onClick={() => onFieldSelect((fieldCounts[0]?.[0] ?? "Công nghệ") as Field)}>
+          <span>
+            <span className="block text-xs font-black text-[var(--muted)]">Tổng số</span>
+            <span className="block text-3xl font-black text-[var(--navy-900)]">{total}</span>
+            <span className="block text-xs font-bold text-[var(--muted)]">sáng kiến</span>
+          </span>
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-2 sm:col-span-2">
+        {fieldCounts.map(([field, count]) => (
+          <button key={field} className={`rounded-full px-3 py-1.5 text-xs font-black ${selectedField === field ? "bg-[var(--green-600)] text-white" : "bg-[var(--mist)] text-[var(--navy-800)]"}`} onClick={() => onFieldSelect(field)}>
+            <span className="mr-1 inline-block h-2 w-2 rounded-full" style={{ backgroundColor: fieldMeta[field].color }} />
+            {field} {count}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1287,7 +1361,7 @@ function InitiativesPage({
 }) {
   if (!isAuthed) {
     return (
-      <PageFrame eyebrow="Sáng kiến" title="Đăng nhập để gửi và xem chi tiết sáng kiến">
+    <PageFrame eyebrow="Sáng kiến" title="Đăng nhập để gửi và xem chi tiết sáng kiến" variant="campaign">
         <AuthGatePanel
           title="Bạn đang xem bản public"
           description="Danh sách dưới đây chỉ hiển thị tóm tắt. Đăng nhập tài khoản Tập đoàn để tạo sáng kiến, xem chi tiết, hỏi AI và thể hiện quan tâm."
@@ -1305,7 +1379,7 @@ function InitiativesPage({
 
   if (mode === "form") {
     return (
-      <PageFrame eyebrow="Trình tạo Sáng kiến" title={editingId ? "Chỉnh sửa sáng kiến" : "Biểu mẫu đăng ký sáng kiến"}>
+      <PageFrame eyebrow="Trình tạo Sáng kiến" title={editingId ? "Chỉnh sửa sáng kiến" : "Biểu mẫu đăng ký sáng kiến"} variant="campaign">
         <InitiativeForm
           form={form}
           formMessage={formMessage}
@@ -1329,7 +1403,7 @@ function InitiativesPage({
   const mine = items.filter((item) => item.cuaToi).slice(0, 4);
 
   return (
-    <PageFrame eyebrow="Sáng kiến" title="Danh sách và sáng kiến của tôi">
+    <PageFrame eyebrow="Sáng kiến" title="Danh sách và sáng kiến của tôi" variant="campaign">
       <FilterBar
         selectedDepartment={selectedDepartment}
         selectedField={selectedField}
@@ -1356,7 +1430,7 @@ function InitiativesPage({
           <InitiativeTable items={items} openDetails={openDetails} likeInitiative={likeInitiative} />
         </section>
         <aside className="grid content-start gap-4">
-          <div className="card rounded-xl p-5">
+          <div className="campaign-panel rounded-xl p-5">
             <h3 className="font-black">Sáng kiến của tôi</h3>
             <p className="mt-2 text-sm leading-6 text-[var(--muted)]">Xem lại và chỉnh sửa các sáng kiến bạn đã nhập trong prototype.</p>
             <div className="mt-4 space-y-3">
@@ -1368,7 +1442,7 @@ function InitiativesPage({
               ))}
             </div>
           </div>
-          <div className="card rounded-xl bg-[var(--green-100)] p-5">
+          <div className="note-card rounded-xl p-5">
             <Bot className="h-8 w-8 text-[var(--green-600)]" />
             <h3 className="mt-3 font-black">Bí ý tưởng?</h3>
             <p className="mt-2 text-sm leading-6 text-[var(--navy-800)]">Mở Trợ lý AI ở góc màn hình để nhận gợi ý theo dữ liệu sáng kiến mẫu.</p>
@@ -1379,7 +1453,7 @@ function InitiativesPage({
   );
 }
 
-function StatsPage({
+function InsightsDataPanel({
   isAuthed,
   items,
   initiatives,
@@ -1428,19 +1502,17 @@ function StatsPage({
 }) {
   if (!isAuthed) {
     return (
-      <PageFrame eyebrow="Thống kê" title="Dashboard chi tiết chỉ dành cho người đăng nhập">
-        <AuthGatePanel
-          title="Trang chủ đã có thống kê cơ bản"
-          description="Đăng nhập để xem dashboard chi tiết, bảng sáng kiến và dữ liệu quan tâm theo bộ lọc."
-          action="Đăng nhập để xem dashboard"
-          onAction={login}
-        />
-      </PageFrame>
+      <AuthGatePanel
+        title="Bảng dữ liệu chi tiết chỉ dành cho người đăng nhập"
+        description="Đăng nhập để xem dashboard chi tiết, bảng sáng kiến và dữ liệu quan tâm theo bộ lọc."
+        action="Đăng nhập để xem bảng dữ liệu"
+        onAction={login}
+      />
     );
   }
 
   return (
-    <PageFrame eyebrow="Thống kê" title="Dashboard chi tiết sáng kiến">
+    <>
       <FilterBar
         selectedDepartment={selectedDepartment}
         selectedField={selectedField}
@@ -1483,40 +1555,80 @@ function StatsPage({
       <div className={`mt-5 card overflow-hidden rounded-xl transition ${tablePulse ? "ring-4 ring-[var(--cyan-100)]" : ""}`}>
         <InitiativeTable items={items} openDetails={openDetails} likeInitiative={likeInitiative} />
       </div>
-    </PageFrame>
+    </>
   );
 }
 
 function CompetitionPage({
   isAuthed,
+  activeTab,
+  setActiveTab,
   range,
   setRange,
+  items,
   initiatives,
+  totals,
   departmentCounts,
+  fieldCounts,
   leaderBoard,
+  selectedDepartment,
+  selectedField,
+  selectedStatus,
+  searchQuery,
+  setSelectedDepartment,
+  setSelectedField,
+  setSelectedStatus,
+  setSearchQuery,
+  filterSummary,
+  clearFilters,
   openDetails,
+  likeInitiative,
   applyChartFilter,
   login,
+  tablePulse,
 }: {
   isAuthed: boolean;
+  activeTab: InsightsTab;
+  setActiveTab: (tab: InsightsTab) => void;
   range: string;
   setRange: (value: string) => void;
+  items: Initiative[];
   initiatives: Initiative[];
+  totals: { approved: number; pending: number; interests: number; topField: Field };
   departmentCounts: [string, number][];
+  fieldCounts: readonly (readonly [Field, number])[];
   leaderBoard: { ten: string; donVi: string; soSangKien: number }[];
+  selectedDepartment: string;
+  selectedField: string;
+  selectedStatus: string;
+  searchQuery: string;
+  setSelectedDepartment: (value: string) => void;
+  setSelectedField: (value: string) => void;
+  setSelectedStatus: (value: string) => void;
+  setSearchQuery: (value: string) => void;
+  filterSummary: { key: string; label: string; value: string }[];
+  clearFilters: () => void;
   openDetails: (item: Initiative) => void;
+  likeInitiative: (id: number) => void;
   applyChartFilter: (kind: FilterKind, value: string, targetView?: View) => void;
   login: () => void;
+  tablePulse: boolean;
 }) {
   const topInitiatives = initiatives.slice().sort((a, b) => b.quanTam - a.quanTam).slice(0, 6);
   const awards = initiatives.filter((item) => item.giaiThuong !== "Chờ xét chọn").slice(0, 4);
   const podium = departmentCounts.slice(0, 3);
   const spotlight = topInitiatives[0];
+  const maxDepartment = Math.max(...departmentCounts.map(([, count]) => count), 1);
+  const insightTabs: { id: InsightsTab; label: string }[] = [
+    { id: "overview", label: "Tổng quan" },
+    { id: "competition", label: "Bảng thi đua" },
+    { id: "data", label: "Dữ liệu sáng kiến" },
+  ];
 
   return (
-    <PageFrame eyebrow="Thi đua" title="Bảng thi đua sáng kiến">
+    <PageFrame eyebrow="Thi đua & Thống kê" title="Phong trào sáng kiến Công đoàn Công ty Mẹ" variant="campaign">
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="max-w-2xl text-sm leading-6 text-[var(--muted)]">Theo dõi các Ban/Văn phòng, cá nhân và sáng kiến được hưởng ứng nhiều nhất.</p>
+        <p className="max-w-2xl text-sm leading-6 text-[var(--muted)]">Theo dõi sức nóng phong trào, các chỉ số đổi mới và bảng xếp hạng thi đua trong một không gian thống nhất.</p>
         {isAuthed ? (
           <select className="rounded-md border border-[var(--line)] bg-white px-3 py-2 text-sm font-black" value={range} onChange={(event) => setRange(event.target.value)}>
             {["Tháng này", "Quý này", "Năm nay"].map((item) => (
@@ -1529,10 +1641,71 @@ function CompetitionPage({
           </button>
         )}
       </div>
+      <div className="mb-6 flex flex-wrap gap-2 rounded-xl border border-[var(--line)] bg-white/80 p-1 shadow-sm">
+        {insightTabs.map((tab) => (
+          <button
+            key={tab.id}
+            className={`min-h-11 rounded-lg px-4 py-2 text-sm font-black transition ${activeTab === tab.id ? "bg-[var(--navy-900)] text-white shadow-md shadow-[var(--navy-900)]/12" : "text-[var(--navy-800)] hover:bg-[var(--mist)]"}`}
+            onClick={() => setActiveTab(tab.id)}
+            aria-pressed={activeTab === tab.id}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      {activeTab === "overview" && (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            <StatTile icon={Lightbulb} value={String(initiatives.length)} label="Tổng sáng kiến" caption="Toàn bộ phong trào" color="var(--green-600)" card />
+            <StatTile icon={ShieldCheck} value={String(totals.approved)} label="Đã duyệt" caption="Sẵn sàng lan tỏa" color="var(--blue-700)" card />
+            <StatTile icon={FileText} value={String(totals.pending)} label="Chờ duyệt" caption="Cần xử lý" color="var(--gold-500)" card />
+            <StatTile icon={Heart} value={compactNumber(totals.interests)} label="Lượt quan tâm" caption="Tổng cộng" color="var(--green-500)" card />
+            <StatTile icon={Sparkles} value={totals.topField} label="Lĩnh vực nổi bật" caption="Theo bộ lọc" color="var(--cyan-500)" card />
+          </div>
+          <div className="mt-5 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+            <section className="landing-dashboard rounded-xl p-5">
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="font-black text-[var(--navy-900)]">Sáng kiến theo lĩnh vực</h3>
+                <button className="text-xs font-black text-[var(--blue-700)]" onClick={() => setActiveTab("data")}>Xem dữ liệu</button>
+              </div>
+              <FieldFlowChart total={initiatives.length} fieldCounts={fieldCounts} selectedField={selectedField} onFieldSelect={(field) => applyChartFilter("field", field, "stats")} />
+            </section>
+            <section className="landing-dashboard rounded-xl p-5">
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="font-black text-[var(--navy-900)]">Top Ban/Văn phòng</h3>
+                <button className="text-xs font-black text-[var(--blue-700)]" onClick={() => setActiveTab("competition")}>Xem thi đua</button>
+              </div>
+              <div className="mt-5 space-y-3">
+                {departmentCounts.slice(0, 6).map(([name, count], index) => (
+                  <LeaderboardRow
+                    key={name}
+                    index={index + 1}
+                    name={name}
+                    value={count}
+                    max={maxDepartment}
+                    active={selectedDepartment === name}
+                    onClick={() => applyChartFilter("department", name, "stats")}
+                  />
+                ))}
+              </div>
+            </section>
+          </div>
+          <section className="mt-6">
+            <SectionTitle title="Sáng kiến được quan tâm" />
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {topInitiatives.slice(0, 3).map((item) => (
+                <InitiativeCard key={item.id} item={item} canOpen={isAuthed} onOpen={openDetails} />
+              ))}
+            </div>
+          </section>
+        </>
+      )}
+      {activeTab === "competition" && (
+        <>
       <div className="mb-6 grid gap-4 lg:grid-cols-[1.05fr_1fr]">
-        <section className="card rounded-xl p-5">
+        <section className="campaign-panel rounded-xl p-5">
           <div className="flex items-center justify-between gap-3">
-            <h3 className="font-black">Podium thi đua Ban/Văn phòng</h3>
+            <h3 className="text-2xl font-black text-[var(--navy-900)]">Podium thi đua Ban/Văn phòng</h3>
             <Pill tone="gold">{range}</Pill>
           </div>
           <div className="mt-5 grid items-end gap-3 sm:grid-cols-3">
@@ -1551,7 +1724,7 @@ function CompetitionPage({
           </div>
         </section>
         {spotlight && (
-          <section className="card relative overflow-hidden rounded-xl p-5">
+          <section className="campaign-panel relative overflow-hidden rounded-xl p-5">
             <div className="absolute inset-y-0 right-0 w-1/2 bg-[linear-gradient(90deg,transparent,rgba(29,190,214,0.12))]" />
             <div className="relative">
               <div className="mb-3 flex flex-wrap gap-2">
@@ -1620,6 +1793,34 @@ function CompetitionPage({
           ))}
         </div>
       </section>
+        </>
+      )}
+      {activeTab === "data" && (
+        <InsightsDataPanel
+          isAuthed={isAuthed}
+          items={items}
+          initiatives={initiatives}
+          totals={totals}
+          departmentCounts={departmentCounts}
+          fieldCounts={fieldCounts}
+          leaderBoard={leaderBoard}
+          selectedDepartment={selectedDepartment}
+          selectedField={selectedField}
+          selectedStatus={selectedStatus}
+          searchQuery={searchQuery}
+          setSelectedDepartment={setSelectedDepartment}
+          setSelectedField={setSelectedField}
+          setSelectedStatus={setSelectedStatus}
+          setSearchQuery={setSearchQuery}
+          filterSummary={filterSummary}
+          clearFilters={clearFilters}
+          applyChartFilter={applyChartFilter}
+          openDetails={openDetails}
+          likeInitiative={likeInitiative}
+          login={login}
+          tablePulse={tablePulse}
+        />
+      )}
     </PageFrame>
   );
 }
@@ -1648,10 +1849,10 @@ function GuidePage({
   ];
 
   return (
-    <PageFrame eyebrow="Hướng dẫn" title="Tham gia phong trào sáng kiến trong 3 bước">
+    <PageFrame eyebrow="Hướng dẫn" title="Tham gia phong trào sáng kiến trong 3 bước" variant="campaign">
       <div className="grid gap-4 md:grid-cols-3">
         {steps.map((step, index) => (
-          <div key={step.title} className="card rounded-xl p-5">
+          <div key={step.title} className="note-card rounded-xl p-5">
             <div className="grid h-10 w-10 place-items-center rounded-full bg-[var(--green-100)] text-lg font-black text-[var(--green-700)]">{index + 1}</div>
             <h3 className="mt-4 text-lg font-black">{step.title}</h3>
             <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{step.text}</p>
@@ -1659,7 +1860,7 @@ function GuidePage({
         ))}
       </div>
       <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_360px]">
-        <div className="card rounded-xl p-5">
+        <div className="campaign-panel rounded-xl p-5">
           <h3 className="text-xl font-black">Câu hỏi thường gặp</h3>
           <div className="mt-4 divide-y divide-[var(--line)]">
             {faqs.map(([question, answer]) => (
@@ -1670,7 +1871,7 @@ function GuidePage({
             ))}
           </div>
         </div>
-        <div className="card rounded-xl bg-[var(--blue-100)] p-5">
+        <div className="note-card rounded-xl p-5">
           <Bot className="h-9 w-9 text-[var(--blue-700)]" />
           <h3 className="mt-4 text-xl font-black">Gợi ý với AI</h3>
           <div className="mt-4 grid gap-2">
@@ -2187,7 +2388,11 @@ function InitiativeTable({
             <Pill field={item.linhVuc}>{item.linhVuc}</Pill>
             <span className="font-semibold text-[var(--muted)]">{item.donVi}</span>
             <StatusBadge status={item.trangThai} />
-            <button className="w-fit rounded-md bg-[var(--green-100)] px-3 py-2 font-black text-[var(--green-700)]" onClick={() => likeInitiative(item.id)}>
+            <button
+              className="w-fit rounded-md bg-[var(--green-100)] px-3 py-2 font-black text-[var(--green-700)]"
+              onClick={() => likeInitiative(item.id)}
+              aria-label={`Quan tâm sáng kiến ${item.ten}`}
+            >
               ♥ {item.quanTam}
             </button>
           </div>
@@ -2232,7 +2437,7 @@ function InitiativeCard({
           <StatusBadge status={item.trangThai} />
           {item.giaiThuong !== "Chờ xét chọn" && <Pill tone="gold">{item.giaiThuong}</Pill>}
         </div>
-        <button className="text-left" onClick={() => onOpen(item)}>
+        <button className="text-left" onClick={() => onOpen(item)} aria-label={`Xem chi tiết sáng kiến ${item.ten}`}>
           <h3 className="line-clamp-2 text-base font-black leading-6 text-[var(--navy-900)]">{item.ten}</h3>
         </button>
         <p className="mt-2 line-clamp-3 text-sm leading-6 text-[var(--muted)]">{item.tomTat}</p>
@@ -2241,7 +2446,11 @@ function InitiativeCard({
             <span className="block font-black text-[var(--blue-700)]">{item.tacGia}</span>
             <span className="block truncate text-xs font-semibold text-[var(--muted)]">{item.donVi}</span>
           </span>
-          <button className="shrink-0 font-black text-[var(--green-600)]" onClick={() => (likeInitiative ? likeInitiative(item.id) : onOpen(item))}>
+          <button
+            className="shrink-0 font-black text-[var(--green-600)]"
+            onClick={() => (likeInitiative ? likeInitiative(item.id) : onOpen(item))}
+            aria-label={likeInitiative ? `Quan tâm sáng kiến ${item.ten}` : `Xem chi tiết sáng kiến ${item.ten}`}
+          >
             ♡ {item.quanTam}
           </button>
         </div>
@@ -2264,7 +2473,7 @@ function DetailDrawer({
   edit: () => void;
 }) {
   return (
-    <div className="detail-backdrop fixed inset-0 z-50 bg-[var(--navy-950)]/65">
+    <div className="detail-backdrop fixed inset-0 z-50 bg-[var(--navy-950)]/65" role="dialog" aria-modal="true" aria-label={`Chi tiết sáng kiến ${item.ten}`}>
       <button className="absolute inset-0 h-full w-full cursor-default" onClick={close} aria-label="Đóng chi tiết sáng kiến" />
       <aside className="detail-drawer absolute bottom-0 right-0 flex max-h-[96vh] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:top-0 sm:h-full sm:max-h-none sm:w-[min(82vw,540px)] sm:rounded-l-2xl sm:rounded-tr-none">
         <img src={fieldMeta[item.linhVuc].image} alt="" className="h-48 w-full object-cover" />
@@ -2281,7 +2490,7 @@ function DetailDrawer({
                 {item.tacGia}{item.dongTacGia ? `, ${item.dongTacGia}` : ""} • {item.donVi}
               </p>
             </div>
-            <button className="rounded-md border border-[var(--line)] px-3 py-2 text-sm font-black" onClick={close}>
+            <button className="rounded-md border border-[var(--line)] px-3 py-2 text-sm font-black" onClick={close} aria-label="Đóng chi tiết sáng kiến">
               Đóng
             </button>
           </div>
@@ -2302,7 +2511,7 @@ function DetailDrawer({
           </div>
           {canInteract && (
             <div className="sticky bottom-0 -mx-5 mt-6 flex flex-col gap-3 border-t border-[var(--line)] bg-white/95 px-5 py-4 backdrop-blur sm:-mx-7 sm:flex-row sm:px-7">
-              <button className="rounded-md bg-[var(--green-600)] px-4 py-3 text-sm font-black text-white" onClick={like}>
+              <button className="rounded-md bg-[var(--green-600)] px-4 py-3 text-sm font-black text-white" onClick={like} aria-label={`Quan tâm sáng kiến ${item.ten}`}>
                 Quan tâm sáng kiến này
               </button>
               {item.cuaToi && (
@@ -2343,7 +2552,11 @@ function Chatbot({
   return (
     <div className="fixed inset-x-0 bottom-0 z-40 px-3 pb-3 sm:inset-auto sm:bottom-5 sm:right-5 sm:px-0 sm:pb-0">
       {open && (
-        <section className="chat-panel card mb-3 flex h-[min(720px,calc(100vh-5rem))] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:h-[min(620px,calc(100vh-7rem))] sm:w-[430px] sm:rounded-xl">
+        <section
+          className="chat-panel card mb-3 flex h-[min(720px,calc(100vh-5rem))] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:h-[min(620px,calc(100vh-7rem))] sm:w-[430px] sm:rounded-xl"
+          role="dialog"
+          aria-label="Trợ lý AI Sáng kiến"
+        >
           <header className="bg-[var(--navy-900)] px-4 py-3 text-white">
             <h3 className="font-black">Trợ lý AI Sáng kiến</h3>
             <p className="text-xs text-white/70">Gợi ý dựa trên dữ liệu sáng kiến đã cập nhật</p>
@@ -2392,53 +2605,61 @@ function Chatbot({
           </form>
         </section>
       )}
-      <button className="ml-auto grid h-13 w-13 place-items-center rounded-full bg-[var(--green-600)] text-white shadow-xl shadow-green-900/25 ring-4 ring-white sm:h-14 sm:w-14" onClick={() => setOpen(!open)} aria-label="Mở trợ lý AI">
+      <button
+        className="ml-auto grid h-13 w-13 place-items-center rounded-full bg-[var(--green-600)] text-white shadow-xl shadow-green-900/25 ring-4 ring-white sm:h-14 sm:w-14"
+        onClick={() => setOpen(!open)}
+        aria-label={open ? "Đóng trợ lý AI" : "Mở trợ lý AI"}
+      >
         <Bot className="h-7 w-7" />
       </button>
     </div>
   );
 }
 
-function PageFrame({ eyebrow, title, children }: { eyebrow: string; title: string; children: React.ReactNode }) {
+function PageFrame({
+  eyebrow,
+  title,
+  children,
+  variant = "default",
+}: {
+  eyebrow: string;
+  title: string;
+  children: React.ReactNode;
+  variant?: "default" | "campaign";
+}) {
   return (
-    <section className="app-container py-8 lg:py-12">
+    <section className={`app-container pb-8 pt-24 lg:pb-12 lg:pt-28 ${variant === "campaign" ? "relative" : ""}`}>
       <SectionTitle eyebrow={eyebrow} title={title} />
       {children}
     </section>
   );
 }
 
-function SectionTitle({ eyebrow, title, icon: Icon = Sparkles }: { eyebrow?: string; title: string; icon?: LucideIcon }) {
+function SectionTitle({
+  eyebrow,
+  title,
+  icon: Icon = Sparkles,
+  tone = "default",
+}: {
+  eyebrow?: string;
+  title: string;
+  icon?: LucideIcon;
+  tone?: "default" | "campaign";
+}) {
   return (
     <div className="mb-5 flex items-center gap-3">
       {eyebrow ? (
         <div>
           <p className="text-xs font-black uppercase text-[var(--green-600)]">{eyebrow}</p>
-          <h2 className="mt-1 text-2xl font-black leading-tight text-[var(--navy-900)] sm:text-3xl">{title}</h2>
+          <h2 className={`mt-1 text-2xl font-black leading-tight text-[var(--navy-900)] sm:text-3xl ${tone === "campaign" ? "campaign-subtitle" : ""}`}>{title}</h2>
         </div>
       ) : (
         <>
-          <h2 className="text-2xl font-black leading-tight text-[var(--navy-900)]">{title}</h2>
+          <h2 className={`text-2xl font-black leading-tight text-[var(--navy-900)] ${tone === "campaign" ? "campaign-subtitle" : ""}`}>{title}</h2>
           <Icon className="h-5 w-5 text-[var(--green-600)]" />
         </>
       )}
     </div>
-  );
-}
-
-function ActionTile({ icon: Icon, title, description, locked, onClick }: { icon: LucideIcon; title: string; description: string; locked: boolean; onClick: () => void }) {
-  return (
-    <button className="card-soft focus-ring rounded-xl p-3 text-left transition hover:-translate-y-0.5 hover:bg-white sm:p-4" onClick={onClick}>
-      <Icon className="h-6 w-6 text-[var(--green-600)] sm:h-8 sm:w-8" />
-      <p className="mt-3 text-sm font-black sm:text-base">{title}</p>
-      <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-[var(--muted)] sm:text-xs">{description}</p>
-      {locked && (
-        <p className="mt-3 flex items-center gap-1 text-[10px] font-black text-[var(--muted)] sm:text-xs">
-          <Lock className="h-3.5 w-3.5" />
-          <span className="line-clamp-1">Khóa đến khi đăng nhập</span>
-        </p>
-      )}
-    </button>
   );
 }
 
@@ -2778,18 +2999,20 @@ function AdminInsight({ icon: Icon, title, text, phase2 = false }: { icon: Lucid
 
 function HonorFooter() {
   return (
-    <footer className="mt-8 bg-[linear-gradient(135deg,var(--navy-900),#123f6c)] px-4 py-12 text-white sm:px-6">
-      <div className="mx-auto max-w-7xl">
-        <p className="text-xs font-black uppercase text-white/60">Người thắp lửa đổi mới</p>
-        <h2 className="mt-2 text-3xl font-black leading-tight">Những câu chuyện tạo động lực thi đua.</h2>
+    <footer className="mt-8 px-4 pb-12 pt-4 sm:px-6">
+      <div className="campaign-panel mx-auto max-w-7xl rounded-2xl p-5 sm:p-7">
+        <p className="text-xs font-black uppercase text-[var(--green-600)]">Người thắp lửa đổi mới</p>
+        <h2 className="campaign-subtitle mt-2 text-3xl font-black leading-tight text-[var(--navy-900)]">Những câu chuyện tạo động lực thi đua.</h2>
         <div className="mt-6 grid gap-4 md:grid-cols-3">
           {innovators.map((person) => (
-            <article key={person.ten} className="overflow-hidden rounded-xl border border-white/12 bg-white/10">
-              <img src={person.image} alt="" className="h-36 w-full object-cover" />
-              <div className="p-4">
-                <p className="font-black">{person.ten}</p>
-                <p className="mt-1 text-sm text-white/70">{person.donVi} • {person.count} sáng kiến</p>
-                <p className="mt-3 text-sm leading-6 text-white/82">{person.quote}</p>
+            <article key={person.ten} className="grid gap-4 rounded-xl border border-[var(--line)] bg-white p-4 shadow-sm sm:grid-cols-[92px_1fr] sm:items-center">
+              <div className="honor-avatar" aria-hidden="true">
+                <span>{person.ten.split(" ").slice(-2).map((part) => part[0]).join("")}</span>
+              </div>
+              <div>
+                <p className="font-black text-[var(--navy-900)]">{person.ten}</p>
+                <p className="mt-1 text-sm text-[var(--muted)]">{person.donVi} • {person.count} sáng kiến</p>
+                <p className="mt-3 text-sm leading-6 text-[var(--navy-800)]">{person.quote}</p>
               </div>
             </article>
           ))}
@@ -2801,10 +3024,10 @@ function HonorFooter() {
 
 function LoginPrompt({ close, login }: { close: () => void; login: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-[var(--navy-950)]/60 p-4">
+    <div className="fixed inset-0 z-50 grid place-items-center bg-[var(--navy-950)]/60 p-4" role="dialog" aria-modal="true" aria-labelledby="login-prompt-title">
       <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
         <Lock className="h-9 w-9 text-[var(--green-600)]" />
-        <h3 className="mt-4 text-2xl font-black">Cần đăng nhập tài khoản Tập đoàn</h3>
+        <h3 id="login-prompt-title" className="mt-4 text-2xl font-black">Cần đăng nhập tài khoản Tập đoàn</h3>
         <p className="mt-2 text-sm leading-6 text-[var(--muted)]">Tạo sáng kiến, hỏi AI, xem chi tiết và bấm quan tâm là các chức năng dành cho người dùng đã đăng nhập.</p>
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
           <button className="rounded-md border border-[var(--line)] px-4 py-3 text-sm font-black" onClick={close}>Để sau</button>
