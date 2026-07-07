@@ -12,6 +12,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useInitiativeForm, DEPARTMENTS } from "@/hooks/useInitiativeForm";
 import type { AuthorMode, FormFieldErrors } from "@/hooks/useInitiativeForm";
 import { useInitiatives } from "@/hooks/useInitiatives";
+import { BYPASS_AUTH_TEMP } from "@/lib/auth-bypass";
 import type { AuthorEntry, Field, FormState, Initiative, Status } from "@/lib/types";
 
 type Role = "guest" | "employee" | "admin";
@@ -253,6 +254,7 @@ export default function Home() {
     },
   });
   const isAuthed = Boolean(authUser);
+  const canRegisterInitiative = isAuthed || BYPASS_AUTH_TEMP;
   const isAdmin = Boolean(authUser?.is_admin);
 
   useEffect(() => {
@@ -290,7 +292,7 @@ export default function Home() {
   }
 
   function startCreate() {
-    if (!requireAuth()) return;
+    if (!canRegisterInitiative && !requireAuth()) return;
     resetForm();
     setView("initiatives");
     setInitiativeMode("form");
@@ -652,6 +654,7 @@ export default function Home() {
       {view === "initiatives" && (
         <InitiativesPage
           isAuthed={isAuthed}
+          canRegisterInitiative={canRegisterInitiative}
           mode={initiativeMode}
           setMode={setInitiativeMode}
           items={detailedFiltered}
@@ -1013,7 +1016,7 @@ function LandingPage({
               Cổng thông tin sáng kiến Công đoàn Bộ máy QL&ĐH Petrovietnam
             </p>
             <h1 className="campaign-title text-balance text-[2.75rem] font-black leading-[0.98] text-[var(--navy-900)] sm:text-6xl lg:text-[5rem]">
-              Ý tưởng hôm nay, giá trị ngày mai
+              Sáng kiến hôm nay, đột phá ngày mai
             </h1>
             <p className="mt-5 max-w-xl text-base font-semibold leading-8 text-[var(--navy-800)] sm:text-lg">
               Đóng góp ý tưởng, tìm cảm hứng với AI, lan tỏa thi đua đổi mới trong Bộ máy QL&ĐH Petrovietnam.
@@ -1312,6 +1315,7 @@ function FieldFlowChart({
 
 function InitiativesPage({
   isAuthed,
+  canRegisterInitiative,
   mode,
   setMode,
   items,
@@ -1348,6 +1352,7 @@ function InitiativesPage({
   tablePulse,
 }: {
   isAuthed: boolean;
+  canRegisterInitiative: boolean;
   mode: "list" | "form";
   setMode: (mode: "list" | "form") => void;
   items: Initiative[];
@@ -1383,7 +1388,7 @@ function InitiativesPage({
   login: () => void;
   tablePulse: boolean;
 }) {
-  if (!isAuthed) {
+  if (!canRegisterInitiative) {
     return (
     <PageFrame eyebrow="Sáng kiến" title="Đăng nhập để gửi và xem chi tiết sáng kiến" variant="campaign">
         <AuthGatePanel
@@ -1909,7 +1914,7 @@ function GuidePage({
               Ban Quản trị nguồn nhân lực thì nên làm sáng kiến gì?
             </button>
           </div>
-          <button className="mt-5 rounded-md bg-[var(--green-600)] px-4 py-2 text-sm font-black text-white" onClick={isAuthed ? startCreate : login}>
+          <button className="mt-5 rounded-md bg-[var(--green-600)] px-4 py-2 text-sm font-black text-white" onClick={isAuthed || BYPASS_AUTH_TEMP ? startCreate : login}>
             {isAuthed ? "Tạo sáng kiến" : "Đăng nhập để hỏi AI"}
           </button>
         </div>
