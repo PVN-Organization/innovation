@@ -8,6 +8,8 @@ import type { AuthorEntry, FormState, Initiative } from "@/lib/types";
 
 export type AuthorMode = "solo" | "team";
 export type FormFieldErrors = Record<string, string>;
+export type InitiativeFormStep = "general" | "authors" | "content" | "submit";
+export type DocxExportStatus = "idle" | "loading" | "success" | "error";
 
 const AUTHOR_ROLE = "Đồng tác giả";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -80,6 +82,7 @@ type Deps = {
   updateLocal: (id: number, data: Partial<Initiative>) => void;
   refreshInitiatives: () => Promise<void>;
   onCancel: () => void;
+  onSubmitted?: (initiative: Initiative | null, form: FormState, editing: boolean) => void;
 };
 
 type ValidationResult = {
@@ -101,6 +104,7 @@ export function useInitiativeForm({
   updateLocal,
   refreshInitiatives,
   onCancel,
+  onSubmitted,
 }: Deps) {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [formMessage, setFormMessage] = useState("");
@@ -109,6 +113,9 @@ export function useInitiativeForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [authorMode, setAuthorMode] = useState<AuthorMode>("solo");
   const [finalDocxFile, setFinalDocxFile] = useState<File | null>(null);
+  const [docxStatus, setDocxStatus] = useState<DocxExportStatus>("idle");
+  const [docxMessage, setDocxMessage] = useState("");
+  const [lastSubmittedForm, setLastSubmittedForm] = useState<FormState | null>(null);
   const stashedAuthorsRef = useRef<AuthorEntry[]>([]);
 
   function updateForm(key: keyof FormState, value: string) {
@@ -227,43 +234,65 @@ export function useInitiativeForm({
     return { tacGia, dongTacGia };
   }
 
-  function validateForm(
+  function buildValidationResult(
     currentForm: FormState = form,
     docxFile: File | null = finalDocxFile,
+    step?: InitiativeFormStep,
   ): ValidationResult {
     const errors: FormFieldErrors = {};
 
-    for (const { key, label } of REQUIRED_TEXT_FIELDS) {
-      if (!(currentForm[key] as string).trim()) {
-        errors[key] = `${label} là bắt buộc.`;
+    const needsGeneral = !step || step === "general" || step === "submit";
+    const needsAuthors = !step || step === "authors" || step === "submit";
+    const needsContent = !step || step === "content" || step === "submit";
+    const needsSubmit = !step || step === "submit";
+
+    if (needsGeneral) {
+      for (const { key, label } of REQUIRED_TEXT_FIELDS.filter(({ key }) =>
+        ["ten", "email"].includes(String(key)),
+      )) {
+        if (!(currentForm[key] as string).trim()) {
+          errors[key] = `${label} là bắt buộc.`;
+        }
+      }
+
+      if (currentForm.ten.trim().length > MAX_TEN_LENGTH) {
+        errors.ten = `Tên sáng kiến tối đa ${MAX_TEN_LENGTH} ký tự.`;
+      }
+
+      const contactEmail = currentForm.email.trim();
+      if (contactEmail && !EMAIL_RE.test(contactEmail)) {
+        errors.email = "Email liên hệ không hợp lệ (ví dụ: ten@pvn.vn).";
+      }
+
+      const { thoiGianTu, thoiGianDen } = currentForm;
+      if (thoiGianTu && thoiGianDen && thoiGianTu > thoiGianDen) {
+        errors.thoiGian = "Thời gian kết thúc phải sau hoặc bằng thời gian bắt đầu.";
       }
     }
 
-    if (currentForm.ten.trim().length > MAX_TEN_LENGTH) {
-      errors.ten = `Tên sáng kiến tối đa ${MAX_TEN_LENGTH} ký tự.`;
+    if (needsAuthors) {
+      currentForm.danhSachTacGia.forEach((author, index) => {
+        if (!author.hoTen.trim()) {
+          errors[`author.${index}.hoTen`] = `Họ và tên tác giả ${index + 1} là bắt buộc.`;
+        }
+        const authorEmail = author.email.trim();
+        if (authorEmail && !EMAIL_RE.test(authorEmail)) {
+          errors[`author.${index}.email`] = "Email không hợp lệ.";
+        }
+      });
     }
 
-    const contactEmail = currentForm.email.trim();
-    if (contactEmail && !EMAIL_RE.test(contactEmail)) {
-      errors.email = "Email liên hệ không hợp lệ (ví dụ: ten@pvn.vn).";
-    }
-
-    currentForm.danhSachTacGia.forEach((author, index) => {
-      if (!author.hoTen.trim()) {
-        errors[`author.${index}.hoTen`] = `Họ và tên đồng tác giả ${index + 1} là bắt buộc.`;
+    if (needsContent) {
+      for (const { key, label } of REQUIRED_TEXT_FIELDS.filter(({ key }) =>
+        ["lyDo", "mucTieu", "thucTrang", "giaiPhap", "cachThuc", "hieuQua"].includes(String(key)),
+      )) {
+        if (!(currentForm[key] as string).trim()) {
+          errors[key] = `${label} là bắt buộc.`;
+        }
       }
-      const authorEmail = author.email.trim();
-      if (authorEmail && !EMAIL_RE.test(authorEmail)) {
-        errors[`author.${index}.email`] = "Email không hợp lệ.";
-      }
-    });
-
-    const { thoiGianTu, thoiGianDen } = currentForm;
-    if (thoiGianTu && thoiGianDen && thoiGianTu > thoiGianDen) {
-      errors.thoiGian = "Thời gian kết thúc phải sau hoặc bằng thời gian bắt đầu.";
     }
 
-    if (docxFile) {
+    if (needsSubmit && docxFile) {
       if (!isDocxFile(docxFile)) {
         errors.finalDocx = "Chỉ chấp nhận file .docx.";
       } else if (docxFile.size > MAX_DOCX_BYTES) {
@@ -282,6 +311,29 @@ export function useInitiativeForm({
       fieldErrors: errors,
       summaryMessage,
     };
+  }
+
+  function validateForm(
+    currentForm: FormState = form,
+    docxFile: File | null = finalDocxFile,
+  ): ValidationResult {
+    return buildValidationResult(currentForm, docxFile);
+  }
+
+  function validateStep(step: InitiativeFormStep): boolean {
+    return applyValidation(buildValidationResult(form, finalDocxFile, step));
+  }
+
+  function validateAll(currentForm: FormState = form): boolean {
+    return applyValidation(validateForm(currentForm, finalDocxFile));
+  }
+
+  function getFirstErrorStep(errors: FormFieldErrors = fieldErrors): InitiativeFormStep {
+    const keys = Object.keys(errors);
+    if (keys.some((key) => ["ten", "email", "thoiGian"].includes(key))) return "general";
+    if (keys.some((key) => key.startsWith("author."))) return "authors";
+    if (keys.some((key) => ["lyDo", "mucTieu", "thucTrang", "giaiPhap", "cachThuc", "tomTat", "hieuQua", "tinhMoi", "nhanRong"].includes(key))) return "content";
+    return "submit";
   }
 
   function applyValidation(result: ValidationResult): boolean {
@@ -319,6 +371,7 @@ export function useInitiativeForm({
     const thoiGian = deriveThoiGian();
 
     if (editingId) {
+      const submittedForm = { ...form };
       updateLocal(editingId, {
         ...form,
         tacGia,
@@ -327,6 +380,8 @@ export function useInitiativeForm({
         thoiGian,
       });
       setFormMessage("Đã cập nhật sáng kiến của bạn.");
+      setLastSubmittedForm(submittedForm);
+      onSubmitted?.(null, submittedForm, true);
       setEditingId(null);
       setForm(EMPTY_FORM);
       setAuthorMode("solo");
@@ -357,9 +412,11 @@ export function useInitiativeForm({
       if (form.email) fd.append("email", form.email);
       if (finalDocxFile) fd.append("file", finalDocxFile, finalDocxFile.name);
 
-      await apiSubmit(fd);
+      const created = await apiSubmit(fd);
       await refreshInitiatives();
       setFormMessage("Đã gửi sáng kiến. Hồ sơ đã chuyển sang trạng thái Chờ duyệt.");
+      setLastSubmittedForm({ ...form });
+      onSubmitted?.(created, { ...form }, false);
       submitted = true;
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
@@ -389,6 +446,8 @@ export function useInitiativeForm({
     setAuthorMode("solo");
     setFieldErrors({});
     setFinalDocxFile(null);
+    setDocxStatus("idle");
+    setDocxMessage("");
     setFormMessage("Đã hủy nhập liệu và trở về danh sách sáng kiến.");
     onCancel();
   }
@@ -399,7 +458,20 @@ export function useInitiativeForm({
     setAuthorMode("solo");
     setFieldErrors({});
     setFinalDocxFile(null);
+    setDocxStatus("idle");
+    setDocxMessage("");
     setFormMessage("");
+  }
+
+  function restoreDraft(nextForm: FormState, nextAuthorMode: AuthorMode = "solo") {
+    setForm(nextForm);
+    setEditingId(null);
+    setAuthorMode(nextAuthorMode);
+    setFieldErrors({});
+    setFinalDocxFile(null);
+    setDocxStatus("idle");
+    setDocxMessage("");
+    setFormMessage("Đã khôi phục bản nháp. Bạn có thể tiếp tục chỉnh sửa.");
   }
 
   function prefillFormFromSuggestion(data: Partial<FormState>) {
@@ -498,30 +570,45 @@ export function useInitiativeForm({
     setFormMessage("Đang chỉnh sửa sáng kiến đã chọn.");
   }
 
-  async function exportDocx() {
-    if (!applyValidation(validateForm(form, null))) return;
+  async function exportDocx(sourceForm: FormState = form): Promise<boolean> {
+    setDocxStatus("idle");
+    setDocxMessage("");
+    if (!applyValidation(validateForm(sourceForm, null))) {
+      setDocxStatus("error");
+      setDocxMessage("Vui lòng hoàn thiện thông tin bắt buộc trước khi tải DOCX.");
+      return false;
+    }
 
-    const thoiGian = deriveThoiGian();
-    const authors = form.danhSachTacGia.map((author) => ({
+    const thoiGian = (() => {
+      const tu = sourceForm.thoiGianTu;
+      const den = sourceForm.thoiGianDen;
+      if (tu && den) return `${formatDateVN(tu)} - ${formatDateVN(den)}`;
+      if (tu) return `Từ ${formatDateVN(tu)}`;
+      if (den) return `Đến ${formatDateVN(den)}`;
+      return "";
+    })();
+    const authors = sourceForm.danhSachTacGia.map((author) => ({
       ...author,
       vaiTro: AUTHOR_ROLE,
     }));
 
     const fd = new FormData();
-    fd.append("ten", form.ten);
-    fd.append("linhVuc", form.linhVuc);
+    fd.append("ten", sourceForm.ten);
+    fd.append("linhVuc", sourceForm.linhVuc);
     fd.append("thoiGian", thoiGian);
     fd.append("danhSachTacGia", JSON.stringify(authors));
-    fd.append("lyDo", form.lyDo);
-    fd.append("mucTieu", form.mucTieu);
-    fd.append("thucTrang", form.thucTrang);
-    fd.append("giaiPhap", form.giaiPhap);
-    fd.append("cachThuc", form.cachThuc);
-    fd.append("hieuQua", form.hieuQua);
-    fd.append("tinhMoi", form.tinhMoi);
-    fd.append("nhanRong", form.nhanRong);
+    fd.append("lyDo", sourceForm.lyDo);
+    fd.append("mucTieu", sourceForm.mucTieu);
+    fd.append("thucTrang", sourceForm.thucTrang);
+    fd.append("giaiPhap", sourceForm.giaiPhap);
+    fd.append("cachThuc", sourceForm.cachThuc);
+    fd.append("hieuQua", sourceForm.hieuQua);
+    fd.append("tinhMoi", sourceForm.tinhMoi);
+    fd.append("nhanRong", sourceForm.nhanRong);
 
     try {
+      setDocxStatus("loading");
+      setDocxMessage("Đang tạo file DOCX...");
       const resp = await fetch(`${API_BASE}/api/v1/initiatives/preview-docx`, {
         method: "POST",
         body: fd,
@@ -529,8 +616,10 @@ export function useInitiativeForm({
       });
 
       if (!resp.ok) {
+        setDocxStatus("error");
+        setDocxMessage("Lỗi khi xuất DOCX. Vui lòng thử lại.");
         setFormMessage("Lỗi khi xuất DOCX. Vui lòng thử lại.");
-        return;
+        return false;
       }
 
       const blob = await resp.blob();
@@ -540,9 +629,15 @@ export function useInitiativeForm({
       link.download = "dang-ky-sang-kien.docx";
       link.click();
       URL.revokeObjectURL(url);
+      setDocxStatus("success");
+      setDocxMessage("Đã tải file DOCX.");
       setFormMessage("Đã xuất tệp đăng ký. Bạn có thể chỉnh sửa và tải lên bản cuối cùng.");
+      return true;
     } catch {
+      setDocxStatus("error");
+      setDocxMessage("Không thể kết nối server để xuất DOCX.");
       setFormMessage("Không thể kết nối server để xuất DOCX.");
+      return false;
     }
   }
 
@@ -554,6 +649,9 @@ export function useInitiativeForm({
     isSubmitting,
     authorMode,
     finalDocxFile,
+    docxStatus,
+    docxMessage,
+    lastSubmittedForm,
     updateForm,
     handleModeChange,
     updateAuthor,
@@ -562,8 +660,12 @@ export function useInitiativeForm({
     handleSubmit,
     clearForm,
     resetForm,
+    restoreDraft,
     prefillFormFromSuggestion,
     exportDocx,
+    validateStep,
+    validateAll,
+    getFirstErrorStep,
     startEdit,
     setFinalDocx,
     clearFinalDocx,

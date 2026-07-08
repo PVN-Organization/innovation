@@ -11,7 +11,7 @@ import type { ReactElement, ReactNode, SVGProps } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useInitiativeForm, DEPARTMENTS } from "@/hooks/useInitiativeForm";
-import type { AuthorMode, FormFieldErrors } from "@/hooks/useInitiativeForm";
+import type { AuthorMode, FormFieldErrors, InitiativeFormStep, DocxExportStatus } from "@/hooks/useInitiativeForm";
 import { useInitiatives } from "@/hooks/useInitiatives";
 import { BYPASS_AUTH_TEMP } from "@/lib/auth-bypass";
 import type { AuthorEntry, Field, FormState, Initiative, Status } from "@/lib/types";
@@ -33,6 +33,13 @@ type ChatMessage = {
   text: string;
   suggestions?: ChatSuggestion[];
 };
+type DraftState = {
+  form: FormState;
+  authorMode: AuthorMode;
+  currentStep: InitiativeFormStep;
+  savedAt: number;
+};
+type LeaderboardPerson = { ten: string; donVi: string; soSangKien: number; quanTam: number };
 type IconProps = SVGProps<SVGSVGElement>;
 type LucideIcon = (props: IconProps) => ReactElement;
 
@@ -232,6 +239,10 @@ export default function Home() {
   const [adminSearch, setAdminSearch] = useState("");
   const [insightsTab, setInsightsTab] = useState<InsightsTab>("competition");
   const [initiativeMode, setInitiativeMode] = useState<"list" | "form">("list");
+  const [currentFormStep, setCurrentFormStep] = useState<InitiativeFormStep>("general");
+  const [draftState, setDraftState] = useState<DraftState | null>(null);
+  const [successNotice, setSuccessNotice] = useState<string | null>(null);
+  const [highlightedInitiativeId, setHighlightedInitiativeId] = useState<number | null>(null);
   const [selectedInitiative, setSelectedInitiative] = useState<Initiative | null>(null);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   const [authNotice, setAuthNotice] = useState<string | null>(() => {
@@ -251,14 +262,19 @@ export default function Home() {
       text: "Xin chào, tôi là Trợ lý AI Sáng kiến. Tôi có thể gợi ý ý tưởng dựa trên dữ liệu sáng kiến hiện có.",
     },
   ]);
+  const draftKey = `innovation-portal:draft:v1:${authUser?.email ?? "anonymous"}`;
 
   const {
     form,
     formMessage,
     fieldErrors,
     editingId,
+    isSubmitting,
     authorMode,
     finalDocxFile,
+    docxStatus,
+    docxMessage,
+    lastSubmittedForm,
     updateForm,
     handleModeChange,
     updateAuthor,
@@ -267,7 +283,11 @@ export default function Home() {
     handleSubmit: submitInitiative,
     clearForm,
     resetForm,
+    restoreDraft,
     exportDocx,
+    validateStep,
+    validateAll,
+    getFirstErrorStep,
     startEdit,
     prefillFormFromSuggestion,
     setFinalDocx,
@@ -275,9 +295,27 @@ export default function Home() {
   } = useInitiativeForm({
     updateLocal,
     refreshInitiatives,
-    onCancel: () => {
+    onSubmitted: (initiative, submittedForm, editing) => {
+      clearDraft();
+      setSuccessNotice(
+        editing
+          ? `Đã cập nhật: ${submittedForm.ten}.`
+          : `Đã gửi: ${submittedForm.ten}. Trạng thái: Chờ duyệt.`,
+      );
+      setHighlightedInitiativeId(initiative?.id ?? null);
       setView("initiatives");
       setInitiativeMode("list");
+      setCurrentFormStep("general");
+      setChatOpen(false);
+      scrollToViewTop();
+      window.setTimeout(() => setHighlightedInitiativeId(null), 3000);
+    },
+    onCancel: () => {
+      clearDraft();
+      setView("initiatives");
+      setInitiativeMode("list");
+      setCurrentFormStep("general");
+      scrollToViewTop();
     },
   });
   const isAuthed = Boolean(authUser);
@@ -291,6 +329,37 @@ export default function Home() {
     window.history.replaceState({}, "", window.location.pathname);
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const timeout = window.setTimeout(() => {
+      try {
+        const raw = window.localStorage.getItem(draftKey);
+        setDraftState(raw ? (JSON.parse(raw) as DraftState) : null);
+      } catch {
+        setDraftState(null);
+      }
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [draftKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (view !== "initiatives" || initiativeMode !== "form" || editingId) return;
+    if (!hasDraftContent(form)) return;
+
+    const timeout = window.setTimeout(() => {
+      const nextDraft: DraftState = {
+        form,
+        authorMode,
+        currentStep: currentFormStep,
+        savedAt: Date.now(),
+      };
+      window.localStorage.setItem(draftKey, JSON.stringify(nextDraft));
+      setDraftState(nextDraft);
+    }, 800);
+    return () => window.clearTimeout(timeout);
+  }, [authorMode, currentFormStep, draftKey, editingId, form, initiativeMode, view]);
+
   function requireAuth() {
     if (isAuthed) return true;
     setShowLoginPrompt(true);
@@ -299,6 +368,60 @@ export default function Home() {
 
   function scrollToViewTop() {
     window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+  }
+
+  function hasDraftContent(value: FormState) {
+    return Boolean(
+      value.ten.trim() ||
+      value.email.trim() ||
+      value.lyDo.trim() ||
+      value.mucTieu.trim() ||
+      value.giaiPhap.trim() ||
+      value.hieuQua.trim() ||
+      value.danhSachTacGia.some((author) => author.hoTen.trim() || author.email.trim()),
+    );
+  }
+
+  function saveDraftNow() {
+    if (typeof window === "undefined") return;
+    if (!hasDraftContent(form)) return;
+    const nextDraft: DraftState = {
+      form,
+      authorMode,
+      currentStep: currentFormStep,
+      savedAt: Date.now(),
+    };
+    window.localStorage.setItem(draftKey, JSON.stringify(nextDraft));
+    setDraftState(nextDraft);
+  }
+
+  function clearDraft() {
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(draftKey);
+    }
+    setDraftState(null);
+  }
+
+  function resumeDraft() {
+    if (!draftState) return;
+    restoreDraft(draftState.form, draftState.authorMode);
+    setCurrentFormStep(draftState.currentStep);
+    setView("initiatives");
+    setInitiativeMode("form");
+    scrollToViewTop();
+  }
+
+  function discardDraft() {
+    clearDraft();
+    if (!hasDraftContent(form)) return;
+    resetForm();
+    setCurrentFormStep("general");
+  }
+
+  function backToInitiativeList() {
+    setInitiativeMode("list");
+    setCurrentFormStep("general");
+    scrollToViewTop();
   }
 
   function go(nextView: View) {
@@ -326,6 +449,8 @@ export default function Home() {
   function startCreate() {
     if (!canRegisterInitiative && !requireAuth()) return;
     resetForm();
+    setCurrentFormStep("general");
+    setSuccessNotice(null);
     setView("initiatives");
     setInitiativeMode("form");
     scrollToViewTop();
@@ -505,8 +630,10 @@ export default function Home() {
   function editInitiative(item: Initiative) {
     if (!requireAuth()) return;
     startEdit(item);
+    setCurrentFormStep("general");
     setView("initiatives");
     setInitiativeMode("form");
+    scrollToViewTop();
   }
 
   function exportCsv() {
@@ -683,7 +810,9 @@ export default function Home() {
           initiatives={initiatives}
           filtered={publicFiltered}
           departmentCounts={departmentCounts}
+          departmentStats={departmentStats}
           fieldCounts={fieldCounts}
+          leaderBoard={leaderBoard}
           totals={totals}
           selectedField={selectedField}
           filterSummary={filterSummary}
@@ -710,6 +839,12 @@ export default function Home() {
           formMessage={formMessage}
           fieldErrors={fieldErrors}
           editingId={editingId}
+          isSubmitting={isSubmitting}
+          currentStep={currentFormStep}
+          setCurrentStep={setCurrentFormStep}
+          draftState={draftState}
+          successNotice={successNotice}
+          highlightedInitiativeId={highlightedInitiativeId}
           selectedDepartment={selectedDepartment}
           selectedField={selectedField}
           selectedStatus={selectedStatus}
@@ -728,10 +863,20 @@ export default function Home() {
           removeAuthor={removeAuthor}
           submitInitiative={submitInitiative}
           exportDocx={exportDocx}
+          docxStatus={docxStatus}
+          docxMessage={docxMessage}
+          lastSubmittedForm={lastSubmittedForm}
+          validateStep={validateStep}
+          validateAll={validateAll}
+          getFirstErrorStep={getFirstErrorStep}
+          onSaveDraft={saveDraftNow}
+          onResumeDraft={resumeDraft}
+          onDiscardDraft={discardDraft}
           clearForm={clearForm}
           finalDocxFile={finalDocxFile}
           setFinalDocx={setFinalDocx}
           clearFinalDocx={clearFinalDocx}
+          backToList={backToInitiativeList}
           openDetails={openDetails}
           likeInitiative={likeInitiative}
           editInitiative={editInitiative}
@@ -1016,7 +1161,9 @@ function LandingPage({
   initiatives,
   filtered,
   departmentCounts,
+  departmentStats,
   fieldCounts,
+  leaderBoard,
   totals,
   selectedField,
   filterSummary,
@@ -1032,7 +1179,9 @@ function LandingPage({
   initiatives: Initiative[];
   filtered: Initiative[];
   departmentCounts: [string, number][];
+  departmentStats: { ten: string; soSangKien: number; quanTam: number }[];
   fieldCounts: readonly (readonly [Field, number])[];
+  leaderBoard: LeaderboardPerson[];
   totals: { approved: number; pending: number; interests: number; topField: Field };
   selectedField: string;
   filterSummary: { key: string; label: string; value: string }[];
@@ -1044,6 +1193,16 @@ function LandingPage({
   showLogin: () => void;
   go: (view: View) => void;
 }) {
+  const topDepartments = departmentStats
+    .slice()
+    .sort((a, b) => b.soSangKien - a.soSangKien || b.quanTam - a.quanTam)
+    .slice(0, 3);
+  const topInitiatives = initiatives.slice().sort((a, b) => b.quanTam - a.quanTam).slice(0, 3);
+  const topFields = fieldCounts
+    .slice()
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3);
+
   return (
     <>
       <section className="campaign-hero relative overflow-hidden text-[var(--ink)]">
@@ -1082,11 +1241,57 @@ function LandingPage({
 
       <section className="app-container relative z-10 mt-4 lg:-mt-4">
         <div className="grid gap-5 lg:grid-cols-[1fr_380px]">
-          <div className="card grid overflow-hidden rounded-xl md:grid-cols-4">
-            <LandingShortcut icon={Trophy} title="Top Ban/Văn phòng" text="Có nhiều sáng kiến nhất" action="Xem bảng thi đua" onClick={() => go("competition")} color="var(--gold-500)" />
-            <LandingShortcut icon={Users} title="Top cá nhân" text="Truyền cảm hứng đổi mới" action="Xem chi tiết" onClick={() => go("competition")} color="var(--green-600)" />
-            <LandingShortcut icon={Heart} title="Sáng kiến được quan tâm" text="Nhiều hưởng ứng nhất" action="Khám phá ngay" onClick={() => (isAuthed ? go("initiatives") : showLogin())} color="var(--green-500)" />
-            <LandingShortcut icon={BarChart3} title="Tỷ lệ sáng kiến" text="Theo lĩnh vực trọng tâm" action="Xem biểu đồ" onClick={() => (isAuthed ? go("stats") : showLogin())} color="var(--blue-700)" />
+          <div className="landing-top-grid grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <LandingTopCard
+              icon={Trophy}
+              title="Top Ban/Văn phòng"
+              color="var(--gold-500)"
+              rows={topDepartments.map((item) => ({
+                label: item.ten,
+                meta: `${compactNumber(item.quanTam)} quan tâm`,
+                value: `${item.soSangKien}`,
+              }))}
+              empty="Chưa có đơn vị nổi bật."
+              onClick={() => go("competition")}
+            />
+            <LandingTopCard
+              icon={Users}
+              title="Top cá nhân"
+              color="var(--green-600)"
+              rows={leaderBoard.slice(0, 3).map((item) => ({
+                label: item.ten,
+                meta: item.donVi,
+                value: `${item.soSangKien}`,
+              }))}
+              empty="Chưa có tác giả nổi bật."
+              onClick={() => go("competition")}
+            />
+            <LandingTopCard
+              icon={Heart}
+              title="Sáng kiến được quan tâm"
+              color="var(--green-500)"
+              rows={topInitiatives.map((item) => ({
+                label: item.ten,
+                meta: item.tacGia,
+                value: compactNumber(item.quanTam),
+                onClick: () => (isAuthed ? openDetails(item) : showLogin()),
+              }))}
+              empty="Chưa có sáng kiến được quan tâm."
+              onClick={() => (isAuthed ? go("initiatives") : showLogin())}
+            />
+            <LandingTopCard
+              icon={BarChart3}
+              title="Tỷ lệ sáng kiến"
+              color="var(--blue-700)"
+              rows={topFields.map(([field, count]) => ({
+                label: field,
+                meta: `${filtered.length ? Math.round((count / filtered.length) * 100) : 0}% tổng số`,
+                value: `${count}`,
+                onClick: () => applyChartFilter("field", field),
+              }))}
+              empty="Chưa có dữ liệu lĩnh vực."
+              onClick={() => (isAuthed ? go("stats") : showLogin())}
+            />
           </div>
           <LandingAiCard isAuthed={isAuthed} openChat={openChat} showLogin={showLogin} />
         </div>
@@ -1095,8 +1300,9 @@ function LandingPage({
       <BasicStats
         isAuthed={isAuthed}
         filtered={filtered}
-        departmentCounts={departmentCounts}
+        departmentStats={departmentStats}
         fieldCounts={fieldCounts}
+        leaderBoard={leaderBoard}
         selectedField={selectedField}
         filterSummary={filterSummary}
         applyChartFilter={applyChartFilter}
@@ -1120,34 +1326,75 @@ function CampaignMetric({ value, label, color }: { image: string; value: string;
   );
 }
 
-function LandingShortcut({
+function LandingTopCard({
   icon: Icon,
   title,
-  text,
-  action,
+  rows,
+  empty,
   onClick,
   color,
 }: {
   icon: LucideIcon;
   title: string;
-  text: string;
-  action: string;
+  rows: { label: string; meta: string; value: string; onClick?: () => void }[];
+  empty: string;
   onClick: () => void;
   color: string;
 }) {
   return (
-    <button className="group border-b border-[var(--line)] p-6 text-left transition hover:bg-[var(--paper-soft)] md:border-b-0 md:border-r xl:p-7" onClick={onClick}>
-      <div className="flex items-start gap-3">
-        <span className="grid h-13 w-13 shrink-0 place-items-center rounded-full bg-white shadow-sm" style={{ color }}>
-          <Icon className="h-7 w-7" />
-        </span>
-        <span className="min-w-0">
-          <span className="block font-black text-[var(--navy-900)]">{title}</span>
-          <span className="mt-1 block text-sm font-semibold leading-5 text-[var(--muted)]">{text}</span>
-          <span className="mt-3 block text-xs font-black text-[var(--green-700)] group-hover:underline">{action} →</span>
-        </span>
+    <article className="landing-data-card rounded-xl p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/88 shadow-sm" style={{ color }}>
+            <Icon className="h-5 w-5" />
+          </span>
+          <h3 className="truncate text-sm font-black text-[var(--navy-900)]">{title}</h3>
+        </div>
+        <button
+          className="shrink-0 text-xs font-black text-[var(--green-700)] hover:underline"
+          onClick={onClick}
+          type="button"
+        >
+          Xem đầy đủ
+        </button>
       </div>
-    </button>
+      <div className="mt-4 grid gap-2">
+        {rows.length === 0 && <p className="text-sm font-semibold text-[var(--muted)]">{empty}</p>}
+        {rows.map((row, index) => {
+          const content = (
+            <>
+              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[var(--mist)] text-xs font-black text-[var(--navy-800)]">
+                {index + 1}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-black text-[var(--navy-900)]">{row.label}</span>
+                <span className="block truncate text-xs font-semibold text-[var(--muted)]">{row.meta}</span>
+              </span>
+              <span className="shrink-0 rounded-full bg-white/82 px-2 py-1 text-xs font-black text-[var(--green-700)]">
+                {row.value}
+              </span>
+            </>
+          );
+          if (row.onClick) {
+            return (
+              <button
+                key={`${row.label}-${index}`}
+                className="landing-data-row flex w-full items-center gap-2 rounded-lg p-2 text-left"
+                onClick={row.onClick}
+                type="button"
+              >
+                {content}
+              </button>
+            );
+          }
+          return (
+            <div key={`${row.label}-${index}`} className="landing-data-row flex items-center gap-2 rounded-lg p-2">
+              {content}
+            </div>
+          );
+        })}
+      </div>
+    </article>
   );
 }
 
@@ -1180,8 +1427,9 @@ function LandingAiCard({ isAuthed, openChat, showLogin }: { isAuthed: boolean; o
 function BasicStats({
   isAuthed,
   filtered,
-  departmentCounts,
+  departmentStats,
   fieldCounts,
+  leaderBoard,
   selectedField,
   filterSummary,
   applyChartFilter,
@@ -1192,8 +1440,9 @@ function BasicStats({
 }: {
   isAuthed: boolean;
   filtered: Initiative[];
-  departmentCounts: [string, number][];
+  departmentStats: { ten: string; soSangKien: number; quanTam: number }[];
   fieldCounts: readonly (readonly [Field, number])[];
+  leaderBoard: LeaderboardPerson[];
   selectedField: string;
   filterSummary: { key: string; label: string; value: string }[];
   applyChartFilter: (kind: FilterKind, value: string, targetView?: View) => void;
@@ -1202,8 +1451,51 @@ function BasicStats({
   openDetails: (item: Initiative) => void;
   go: (view: View) => void;
 }) {
-  const maxDepartment = Math.max(...departmentCounts.map(([, count]) => count), 1);
+  const [rankingTab, setRankingTab] = useState<"department" | "author" | "field">("department");
+  const departmentRankRows = departmentStats
+    .slice()
+    .sort((a, b) => b.soSangKien - a.soSangKien || b.quanTam - a.quanTam)
+    .slice(0, 5)
+    .map((item) => ({
+      key: item.ten,
+      name: item.ten,
+      meta: `${compactNumber(item.quanTam)} quan tâm`,
+      value: item.soSangKien,
+      active: false,
+      onClick: () => applyChartFilter("department", item.ten),
+    }));
+  const authorRankRows = leaderBoard
+    .slice()
+    .sort((a, b) => b.soSangKien - a.soSangKien || b.quanTam - a.quanTam)
+    .slice(0, 5)
+    .map((item) => ({
+      key: item.ten,
+      name: item.ten,
+      meta: item.donVi,
+      value: item.soSangKien,
+      active: false,
+      onClick: () => applyChartFilter("author", item.ten),
+    }));
+  const fieldRankRows = fieldCounts
+    .slice()
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([field, count]) => ({
+      key: field,
+      name: field,
+      meta: `${filtered.length ? Math.round((count / filtered.length) * 100) : 0}% tổng số`,
+      value: count,
+      active: selectedField === field,
+      onClick: () => applyChartFilter("field", field),
+    }));
+  const rankRows = rankingTab === "department" ? departmentRankRows : rankingTab === "author" ? authorRankRows : fieldRankRows;
+  const maxRankValue = Math.max(...rankRows.map((row) => row.value), 1);
   const topInitiatives = filtered.slice().sort((a, b) => b.quanTam - a.quanTam).slice(0, 3);
+  const rankingTabs: { id: "department" | "author" | "field"; label: string }[] = [
+    { id: "department", label: "Theo ban/văn phòng" },
+    { id: "author", label: "Theo cá nhân" },
+    { id: "field", label: "Theo lĩnh vực" },
+  ];
 
   return (
     <section className="app-container pb-3 pt-6 lg:pb-4 lg:pt-8">
@@ -1213,23 +1505,33 @@ function BasicStats({
         <section className="landing-dashboard-panel border-b border-[var(--line)] p-5 lg:border-b-0 lg:border-r">
           <PanelTitle>Bảng thi đua</PanelTitle>
           <div className="mt-5 grid grid-cols-3 rounded-lg bg-[var(--mist)] p-1 text-center text-xs font-black text-[var(--muted)]">
-            <button className="rounded-md bg-white px-2 py-2 text-[var(--green-700)] shadow-sm">Theo ban/văn phòng</button>
-            <button className="px-2 py-2" onClick={() => go("competition")}>Theo cá nhân</button>
-            <button className="px-2 py-2" onClick={() => go("stats")}>Theo lĩnh vực</button>
+            {rankingTabs.map((tab) => (
+              <button
+                key={tab.id}
+                className={`rounded-md px-2 py-2 ${rankingTab === tab.id ? "bg-white text-[var(--green-700)] shadow-sm" : ""}`}
+                onClick={() => setRankingTab(tab.id)}
+                type="button"
+                aria-pressed={rankingTab === tab.id}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
           <div className="mt-5 space-y-3">
-            {departmentCounts.slice(0, 5).map(([name, count], index) => (
-              <button key={name} className="grid w-full grid-cols-[32px_1fr_34px] items-center gap-3 text-left" onClick={() => applyChartFilter("department", name)}>
+            {rankRows.length === 0 && <EmptyHint text="Chưa có dữ liệu xếp hạng." />}
+            {rankRows.map((row, index) => (
+              <button key={row.key} className="grid w-full grid-cols-[32px_1fr_44px] items-center gap-3 rounded-lg p-1 text-left hover:bg-white/72" onClick={row.onClick}>
                 <span className={`grid h-7 w-7 place-items-center rounded-full text-xs font-black ${index < 3 ? "bg-[var(--gold-500)] text-white" : "bg-[var(--mist)] text-[var(--navy-800)]"}`}>
                   {index + 1}
                 </span>
                 <span className="min-w-0">
-                  <span className="block truncate text-sm font-bold text-[var(--navy-900)]">{name}</span>
+                  <span className="block truncate text-sm font-bold text-[var(--navy-900)]">{row.name}</span>
+                  <span className="block truncate text-xs font-semibold text-[var(--muted)]">{row.meta}</span>
                   <span className="mt-2 block h-2 rounded-full bg-[var(--mist)]">
-                    <span className="block h-2 rounded-full bg-[var(--green-600)]" style={{ width: `${(count / maxDepartment) * 100}%` }} />
+                    <span className="block h-2 rounded-full bg-[var(--green-600)]" style={{ width: `${(row.value / maxRankValue) * 100}%` }} />
                   </span>
                 </span>
-                <span className="text-right text-sm font-black">{count}</span>
+                <span className="text-right text-sm font-black">{row.value}</span>
               </button>
             ))}
           </div>
@@ -1296,48 +1598,59 @@ function FieldFlowChart({
   selectedField: string;
   onFieldSelect: (field: Field) => void;
 }) {
-  const segments = fieldCounts.map(([field, count], index) => ({
-    field,
-    count,
-    color: fieldMeta[field].color,
-    y: 38 + index * 34,
-    width: 20 + Math.max(12, count * 10),
-  }));
   const conic = buildDonutGradient(fieldCounts);
+  const rankedFields = fieldCounts
+    .slice()
+    .sort((a, b) => b[1] - a[1]);
+  const maxCount = Math.max(...rankedFields.map(([, count]) => count), 1);
 
   if (total === 0) {
     return <div className="mt-4"><EmptyHint text="Chưa có dữ liệu lĩnh vực." /></div>;
   }
 
   return (
-    <div className="mt-4 grid gap-4 sm:grid-cols-[1.1fr_150px] sm:items-center">
-      <svg className="h-44 w-full" viewBox="0 0 330 190" role="img" aria-label="Luồng sáng kiến theo lĩnh vực">
-        {segments.map((segment, index) => (
-          <g
-            key={segment.field}
-            className="cursor-pointer"
-            role="button"
-            tabIndex={0}
-            onClick={() => onFieldSelect(segment.field)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") onFieldSelect(segment.field);
-            }}
-          >
-            <path
-              d={`M8 ${segment.y} C 92 ${segment.y - 18}, 134 ${segment.y + 18}, 210 ${segment.y - 2}`}
-              fill="none"
-              stroke={segment.color}
-              strokeWidth={segment.width}
-              strokeLinecap="round"
-              opacity={selectedField !== "Tất cả" && selectedField !== segment.field ? 0.28 : 0.82}
-            />
-            <circle cx="8" cy={segment.y} r="4" fill={segment.color} />
-            <text x="226" y={42 + index * 28} fill="var(--navy-800)" fontSize="11" fontWeight="800">{segment.field}</text>
-          </g>
-        ))}
-      </svg>
-      <div className="mx-auto grid h-36 w-36 place-items-center rounded-full" style={{ background: conic }}>
-        <button className="grid h-[66%] w-[66%] place-items-center rounded-full bg-white text-center shadow-inner" onClick={() => onFieldSelect((fieldCounts[0]?.[0] ?? "Công nghệ") as Field)}>
+    <div className="mt-4 grid gap-5 xl:grid-cols-[minmax(0,1fr)_150px] xl:items-center">
+      <div className="field-distribution-list space-y-3" role="list" aria-label="Tỷ lệ sáng kiến theo lĩnh vực">
+        {rankedFields.map(([field, count]) => {
+          const percent = total > 0 ? Math.round((count / total) * 100) : 0;
+          const active = selectedField === field;
+          return (
+            <button
+              key={field}
+              className={`field-distribution-row w-full rounded-xl p-3 text-left transition ${active ? "is-active" : ""}`}
+              onClick={() => onFieldSelect(field)}
+              type="button"
+              role="listitem"
+              aria-label={`Lọc lĩnh vực ${field}, ${count} sáng kiến, ${percent}%`}
+            >
+              <span className="flex items-center justify-between gap-3">
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: fieldMeta[field].color }} />
+                  <span className="truncate text-sm font-black text-[var(--navy-900)]">{field}</span>
+                </span>
+                <span className="shrink-0 text-sm font-black text-[var(--navy-800)]">{count} · {percent}%</span>
+              </span>
+              <span className="mt-2 block h-2.5 overflow-hidden rounded-full bg-white/78">
+                <span
+                  className="block h-full rounded-full"
+                  style={{
+                    width: `${Math.max(4, (count / maxCount) * 100)}%`,
+                    backgroundColor: fieldMeta[field].color,
+                    opacity: selectedField !== "Tất cả" && !active ? 0.42 : 1,
+                  }}
+                />
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="mx-auto grid h-36 w-36 place-items-center rounded-full shadow-[0_18px_34px_rgba(7,28,58,0.08)]" style={{ background: conic }}>
+        <button
+          className="grid h-[66%] w-[66%] place-items-center rounded-full bg-white text-center shadow-inner"
+          onClick={() => onFieldSelect((rankedFields[0]?.[0] ?? "Công nghệ") as Field)}
+          type="button"
+          aria-label="Lọc lĩnh vực có nhiều sáng kiến nhất"
+        >
           <span>
             <span className="block text-xs font-black text-[var(--muted)]">Tổng số</span>
             <span className="block text-3xl font-black text-[var(--navy-900)]">{total}</span>
@@ -1346,7 +1659,7 @@ function FieldFlowChart({
         </button>
       </div>
       <div className="flex flex-wrap gap-2 sm:col-span-2">
-        {fieldCounts.map(([field, count]) => (
+        {rankedFields.map(([field, count]) => (
           <button key={field} className={`rounded-full px-3 py-1.5 text-xs font-black ${selectedField === field ? "bg-[var(--green-600)] text-white" : "bg-[var(--mist)] text-[var(--navy-800)]"}`} onClick={() => onFieldSelect(field)}>
             <span className="mr-1 inline-block h-2 w-2 rounded-full" style={{ backgroundColor: fieldMeta[field].color }} />
             {field} {count}
@@ -1366,6 +1679,12 @@ function InitiativesPage({
   formMessage,
   fieldErrors,
   editingId,
+  isSubmitting,
+  currentStep,
+  setCurrentStep,
+  draftState,
+  successNotice,
+  highlightedInitiativeId,
   selectedDepartment,
   selectedField,
   selectedStatus,
@@ -1384,10 +1703,20 @@ function InitiativesPage({
   removeAuthor,
   submitInitiative,
   exportDocx,
+  docxStatus,
+  docxMessage,
+  lastSubmittedForm,
+  validateStep,
+  validateAll,
+  getFirstErrorStep,
+  onSaveDraft,
+  onResumeDraft,
+  onDiscardDraft,
   clearForm,
   finalDocxFile,
   setFinalDocx,
   clearFinalDocx,
+  backToList,
   openDetails,
   likeInitiative,
   editInitiative,
@@ -1402,6 +1731,12 @@ function InitiativesPage({
   formMessage: string;
   fieldErrors: FormFieldErrors;
   editingId: number | null;
+  isSubmitting: boolean;
+  currentStep: InitiativeFormStep;
+  setCurrentStep: (step: InitiativeFormStep) => void;
+  draftState: DraftState | null;
+  successNotice: string | null;
+  highlightedInitiativeId: number | null;
   selectedDepartment: string;
   selectedField: string;
   selectedStatus: string;
@@ -1419,11 +1754,21 @@ function InitiativesPage({
   addAuthor: () => void;
   removeAuthor: (index: number) => void;
   submitInitiative: (event: FormEvent<HTMLFormElement>) => void;
-  exportDocx: () => void;
+  exportDocx: (sourceForm?: FormState) => Promise<boolean>;
+  docxStatus: DocxExportStatus;
+  docxMessage: string;
+  lastSubmittedForm: FormState | null;
+  validateStep: (step: InitiativeFormStep) => boolean;
+  validateAll: (currentForm?: FormState) => boolean;
+  getFirstErrorStep: (errors?: FormFieldErrors) => InitiativeFormStep;
+  onSaveDraft: () => void;
+  onResumeDraft: () => void;
+  onDiscardDraft: () => void;
   clearForm: () => void;
   finalDocxFile: File | null;
   setFinalDocx: (file: File | null) => void;
   clearFinalDocx: () => void;
+  backToList: () => void;
   openDetails: (item: Initiative) => void;
   likeInitiative: (id: number) => void;
   editInitiative: (item: Initiative) => void;
@@ -1456,6 +1801,10 @@ function InitiativesPage({
           formMessage={formMessage}
           fieldErrors={fieldErrors}
           editingId={editingId}
+          isSubmitting={isSubmitting}
+          currentStep={currentStep}
+          setCurrentStep={setCurrentStep}
+          draftState={draftState}
           updateForm={updateForm}
           authorMode={authorMode}
           onModeChange={onModeChange}
@@ -1464,11 +1813,20 @@ function InitiativesPage({
           removeAuthor={removeAuthor}
           submitInitiative={submitInitiative}
           exportDocx={exportDocx}
+          docxStatus={docxStatus}
+          docxMessage={docxMessage}
+          lastSubmittedForm={lastSubmittedForm}
+          validateStep={validateStep}
+          validateAll={validateAll}
+          getFirstErrorStep={getFirstErrorStep}
+          onSaveDraft={onSaveDraft}
+          onResumeDraft={onResumeDraft}
+          onDiscardDraft={onDiscardDraft}
           clearForm={clearForm}
           finalDocxFile={finalDocxFile}
           setFinalDocx={setFinalDocx}
           clearFinalDocx={clearFinalDocx}
-          backToList={() => setMode("list")}
+          backToList={backToList}
         />
       </PageFrame>
     );
@@ -1478,6 +1836,11 @@ function InitiativesPage({
 
   return (
     <PageFrame eyebrow="Sáng kiến" title="Danh sách và sáng kiến của tôi" variant="campaign" banner="guide">
+      {successNotice && (
+        <div className="mb-4 rounded-xl border border-[var(--green-500)] bg-[var(--green-100)] px-4 py-3 text-sm font-black text-[var(--green-700)]">
+          {successNotice}
+        </div>
+      )}
       <FilterBar
         selectedDepartment={selectedDepartment}
         selectedField={selectedField}
@@ -1501,19 +1864,36 @@ function InitiativesPage({
               Tạo sáng kiến mới
             </button>
           </div>
-          <InitiativeTable items={items} openDetails={openDetails} likeInitiative={likeInitiative} />
+          <InitiativeTable items={items} openDetails={openDetails} likeInitiative={likeInitiative} highlightedId={highlightedInitiativeId} />
         </section>
         <aside className="grid content-start gap-4">
           <div className="campaign-panel rounded-xl p-5">
             <PanelTitle>Sáng kiến của tôi</PanelTitle>
-            <p className="mt-2 text-sm leading-6 text-[var(--muted)]">Xem lại và chỉnh sửa các sáng kiến bạn đã nhập trong prototype.</p>
-            <div className="mt-4 space-y-3">
-              {(mine.length > 0 ? mine : items.slice(0, 3)).map((item) => (
+            <p className="mt-2 text-sm leading-6 text-[var(--muted)]">Xem lại bản nháp trên máy này và các sáng kiến đã gửi.</p>
+            <div className="mt-4 space-y-4">
+              <div>
+                <p className="text-xs font-black uppercase text-[var(--muted)]">Bản nháp trên máy này</p>
+                {draftState ? (
+                  <button className="mt-2 w-full rounded-lg border border-[var(--line)] bg-white/80 p-3 text-left" onClick={onResumeDraft}>
+                    <p className="line-clamp-2 text-sm font-black">{draftState.form.ten || "Bản nháp chưa đặt tên"}</p>
+                    <p className="mt-1 text-xs font-semibold text-[var(--muted)]">Lưu lúc {new Date(draftState.savedAt).toLocaleString("vi-VN")}</p>
+                  </button>
+                ) : (
+                  <p className="mt-2 rounded-lg border border-dashed border-[var(--line)] px-3 py-3 text-sm font-semibold text-[var(--muted)]">Chưa có bản nháp local.</p>
+                )}
+              </div>
+              <div>
+                <p className="text-xs font-black uppercase text-[var(--muted)]">Đã gửi</p>
+                <div className="mt-2 space-y-3">
+              {(mine.length > 0 ? mine : []).map((item) => (
                 <button key={item.id} className="w-full rounded-lg border border-[var(--line)] p-3 text-left" onClick={() => editInitiative(item)}>
                   <p className="line-clamp-2 text-sm font-black">{item.ten}</p>
                   <p className="mt-1 text-xs font-semibold text-[var(--muted)]">{item.trangThai} • {item.ngayNop}</p>
                 </button>
               ))}
+              {mine.length === 0 && <p className="rounded-lg border border-dashed border-[var(--line)] px-3 py-3 text-sm font-semibold text-[var(--muted)]">Chưa có sáng kiến đã gửi của bạn.</p>}
+                </div>
+              </div>
             </div>
           </div>
           <div className="note-card rounded-xl p-5">
@@ -1857,6 +2237,7 @@ function CompetitionPage({
           initiatives={initiatives}
           totals={totals}
           departmentCounts={departmentCounts}
+          departmentStats={departmentStats}
           fieldCounts={fieldCounts}
           leaderBoard={leaderBoard}
           selectedDepartment={selectedDepartment}
@@ -2102,7 +2483,19 @@ function FormField({
   );
 }
 
-function FormPreviewModal({ form, onClose, onExport }: { form: FormState; onClose: () => void; onExport: () => void }) {
+function FormPreviewModal({
+  form,
+  onClose,
+  onExport,
+  docxStatus,
+  docxMessage,
+}: {
+  form: FormState;
+  onClose: () => void;
+  onExport: () => void;
+  docxStatus: DocxExportStatus;
+  docxMessage: string;
+}) {
   const fmt = (iso: string) => {
     if (!iso) return "";
     const [y, m, d] = iso.split("-");
@@ -2128,7 +2521,7 @@ function FormPreviewModal({ form, onClose, onExport }: { form: FormState; onClos
       <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <header className="flex items-center justify-between gap-3 border-b border-[var(--line)] bg-[var(--navy-900)] px-5 py-3 text-white">
           <PanelTitle className="text-white">Bản xem trước phiếu đăng ký</PanelTitle>
-          <button className="rounded-md p-1 hover:bg-white/10" onClick={onClose} aria-label="Đóng"><X className="h-5 w-5" /></button>
+          <button className="rounded-md p-1 hover:bg-white/10" onClick={onClose} aria-label="Đóng bản xem trước"><X className="h-5 w-5" /></button>
         </header>
         <div className="scrollbar-thin overflow-auto px-6 py-6 sm:px-10" style={{ fontFamily: "var(--font-campaign)" }}>
           <p className="text-center text-sm font-black uppercase tracking-wide text-[var(--muted)]">Phiếu đăng ký sản phẩm sáng tạo</p>
@@ -2156,19 +2549,15 @@ function FormPreviewModal({ form, onClose, onExport }: { form: FormState; onClos
             </div>
           ))}
         </div>
-        <footer className="flex flex-wrap justify-end gap-2 border-t border-[var(--line)] px-5 py-4">
-          <button className="rounded-md border border-[var(--line)] bg-white px-4 py-2 text-sm font-black text-[var(--navy-800)]" onClick={onClose}>Đóng</button>
-          <button className="rounded-md bg-[var(--blue-700)] px-4 py-2 text-sm font-black text-white" onClick={onExport}>Tải file .docx</button>
+        <footer className="flex flex-col gap-2 border-t border-[var(--line)] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className={`min-h-5 text-sm font-bold ${docxStatus === "error" ? "text-red-600" : docxStatus === "success" ? "text-[var(--green-700)]" : "text-[var(--muted)]"}`}>
+            {docxMessage}
+          </p>
+          <button className="rounded-md bg-[var(--blue-700)] px-4 py-2 text-sm font-black text-white disabled:opacity-60" onClick={onExport} disabled={docxStatus === "loading"}>
+            {docxStatus === "loading" ? "Đang tạo file..." : "Tải file .docx"}
+          </button>
         </footer>
       </div>
-    </div>
-  );
-}
-
-function FormSectionHeader({ title, id }: { title: string; id?: string }) {
-  return (
-    <div id={id} className="scroll-mt-24 border-y border-[var(--line)] bg-white px-5 py-5 sm:px-7">
-      <PanelTitle>{title}</PanelTitle>
     </div>
   );
 }
@@ -2186,6 +2575,10 @@ function InitiativeForm({
   formMessage,
   fieldErrors,
   editingId,
+  isSubmitting,
+  currentStep,
+  setCurrentStep,
+  draftState,
   updateForm,
   authorMode,
   onModeChange,
@@ -2194,6 +2587,15 @@ function InitiativeForm({
   removeAuthor,
   submitInitiative,
   exportDocx,
+  docxStatus,
+  docxMessage,
+  lastSubmittedForm,
+  validateStep,
+  validateAll,
+  getFirstErrorStep,
+  onSaveDraft,
+  onResumeDraft,
+  onDiscardDraft,
   clearForm,
   finalDocxFile,
   setFinalDocx,
@@ -2204,6 +2606,10 @@ function InitiativeForm({
   formMessage: string;
   fieldErrors: FormFieldErrors;
   editingId: number | null;
+  isSubmitting: boolean;
+  currentStep: InitiativeFormStep;
+  setCurrentStep: (step: InitiativeFormStep) => void;
+  draftState: DraftState | null;
   updateForm: (key: keyof FormState, value: string) => void;
   authorMode: AuthorMode;
   onModeChange: (mode: AuthorMode) => void;
@@ -2211,43 +2617,32 @@ function InitiativeForm({
   addAuthor: () => void;
   removeAuthor: (index: number) => void;
   submitInitiative: (event: FormEvent<HTMLFormElement>) => void;
-  exportDocx: () => void;
+  exportDocx: (sourceForm?: FormState) => Promise<boolean>;
+  docxStatus: DocxExportStatus;
+  docxMessage: string;
+  lastSubmittedForm: FormState | null;
+  validateStep: (step: InitiativeFormStep) => boolean;
+  validateAll: (currentForm?: FormState) => boolean;
+  getFirstErrorStep: (errors?: FormFieldErrors) => InitiativeFormStep;
+  onSaveDraft: () => void;
+  onResumeDraft: () => void;
+  onDiscardDraft: () => void;
   clearForm: () => void;
   finalDocxFile: File | null;
   setFinalDocx: (file: File | null) => void;
   clearFinalDocx: () => void;
   backToList: () => void;
 }) {
-  const formSteps = [
-    {
-      id: "sec-general",
-      title: "Thông tin chung",
-      done: Boolean(form.ten.trim() && form.email.trim() && form.donVi),
-    },
-    {
-      id: "sec-authors",
-      title: "Thông tin tác giả",
-      done: form.danhSachTacGia.every((author) => author.hoTen.trim()),
-    },
-    {
-      id: "sec-content",
-      title: "Nội dung",
-      done: Boolean(form.lyDo.trim() && form.mucTieu.trim() && form.giaiPhap.trim()),
-    },
-    {
-      id: "sec-impact",
-      title: "Hiệu quả",
-      done: Boolean(form.hieuQua.trim()),
-    },
-    {
-      id: "sec-submit",
-      title: "Xuất/Gửi",
-      done: formMessage.startsWith("Đã gửi") || formMessage.startsWith("Đã cập nhật") || formMessage.startsWith("Đã xuất"),
-    },
-  ];
-
-  const goToSection = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewReady, setPreviewReady] = useState(false);
+
+  const wizardSteps: { id: InitiativeFormStep; title: string }[] = [
+    { id: "general", title: "Thông tin chung" },
+    { id: "authors", title: "Tác giả" },
+    { id: "content", title: "Nội dung" },
+    { id: "submit", title: "Preview/Gửi" },
+  ];
+  const currentIndex = wizardSteps.findIndex((step) => step.id === currentStep);
 
   const contentFields: { key: keyof FormState; label: string; placeholder: string }[] = [
     { key: "lyDo", label: "Lý do đề xuất", placeholder: "Vấn đề, nhu cầu hoặc cơ hội cải tiến cần được giải quyết..." },
@@ -2264,35 +2659,173 @@ function InitiativeForm({
     { key: "nhanRong", label: "Khả năng nhân rộng", placeholder: "Điều kiện và phạm vi có thể nhân rộng..." },
   ];
 
+  const stepKeyMap: Record<InitiativeFormStep, (key: string) => boolean> = {
+    general: (key) => ["ten", "email", "thoiGian"].includes(key),
+    authors: (key) => key.startsWith("author."),
+    content: (key) => ["lyDo", "mucTieu", "thucTrang", "giaiPhap", "cachThuc", "tomTat", "hieuQua", "tinhMoi", "nhanRong"].includes(key),
+    submit: (key) => key === "finalDocx",
+  };
+
+  const currentStepErrors = Object.entries(fieldErrors).filter(([key]) => stepKeyMap[currentStep](key));
+
+  function stepHasErrors(step: InitiativeFormStep) {
+    return Object.keys(fieldErrors).some((key) => stepKeyMap[step](key));
+  }
+
+  function stepDone(step: InitiativeFormStep) {
+    if (stepHasErrors(step)) return false;
+    if (step === "general") return Boolean(form.ten.trim() && form.email.trim() && form.donVi);
+    if (step === "authors") return form.danhSachTacGia.every((author) => author.hoTen.trim());
+    if (step === "content") return Boolean(form.lyDo.trim() && form.mucTieu.trim() && form.thucTrang.trim() && form.giaiPhap.trim() && form.cachThuc.trim() && form.hieuQua.trim());
+    return previewReady;
+  }
+
+  function inferFirstInvalidStep(): InitiativeFormStep {
+    if (!form.ten.trim() || !form.email.trim() || (form.thoiGianTu && form.thoiGianDen && form.thoiGianTu > form.thoiGianDen)) return "general";
+    if (form.danhSachTacGia.some((author) => !author.hoTen.trim())) return "authors";
+    if (!form.lyDo.trim() || !form.mucTieu.trim() || !form.thucTrang.trim() || !form.giaiPhap.trim() || !form.cachThuc.trim() || !form.hieuQua.trim()) return "content";
+    return getFirstErrorStep(fieldErrors);
+  }
+
+  function scrollToFirstInvalid() {
+    window.setTimeout(() => {
+      const formRoot = document.getElementById("initiative-form-card");
+      const target = formRoot?.querySelector<HTMLElement>('[aria-invalid="true"]') ?? formRoot;
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      target?.focus?.();
+    }, 80);
+  }
+
+  function ensureAllValid() {
+    if (validateAll(form)) {
+      setPreviewReady(true);
+      return true;
+    }
+    setPreviewReady(false);
+    setCurrentStep(inferFirstInvalidStep());
+    scrollToFirstInvalid();
+    return false;
+  }
+
+  function goToStep(nextStep: InitiativeFormStep) {
+    const nextIndex = wizardSteps.findIndex((step) => step.id === nextStep);
+    if (nextIndex <= currentIndex) {
+      setCurrentStep(nextStep);
+      return;
+    }
+    if (!validateStep(currentStep)) {
+      scrollToFirstInvalid();
+      return;
+    }
+    if (nextStep === "submit" && !ensureAllValid()) return;
+    setCurrentStep(nextStep);
+  }
+
+  function goNext() {
+    const next = wizardSteps[currentIndex + 1];
+    if (next) goToStep(next.id);
+  }
+
+  function openPreview() {
+    if (!ensureAllValid()) return;
+    setCurrentStep("submit");
+    setPreviewOpen(true);
+  }
+
+  async function handleExportClick() {
+    if (!ensureAllValid()) return;
+    await exportDocx(lastSubmittedForm ?? form);
+  }
+
+  function handleFormSubmit(event: FormEvent<HTMLFormElement>) {
+    if (!ensureAllValid()) {
+      event.preventDefault();
+      return;
+    }
+    submitInitiative(event);
+  }
+
+  const previewBlocks: { label: string; value: string }[] = [
+    { label: "Lý do đề xuất", value: form.lyDo },
+    { label: "Mục tiêu", value: form.mucTieu },
+    { label: "Thực trạng", value: form.thucTrang },
+    { label: "Giải pháp mới", value: form.giaiPhap },
+    { label: "Cách thức áp dụng", value: form.cachThuc },
+    { label: "Nội dung tóm tắt", value: form.tomTat },
+    { label: "Hiệu quả dự kiến", value: form.hieuQua },
+    { label: "Tính mới", value: form.tinhMoi },
+    { label: "Khả năng nhân rộng", value: form.nhanRong },
+  ];
+
   return (
     <section>
-      <form className="card overflow-hidden" onSubmit={submitInitiative}>
-        <div id="sec-general" className="scroll-mt-24 border-b border-[var(--line)] bg-white px-5 py-5 sm:px-7">
-          <PanelTitle>Thông tin chung</PanelTitle>
+      {draftState && !editingId && (
+        <div className="mb-4 flex flex-col gap-3 rounded-xl border border-[var(--gold-500)] bg-[var(--gold-100)]/70 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-black text-[var(--navy-900)]">Bạn có bản nháp chưa hoàn tất</p>
+            <p className="mt-1 text-xs font-bold text-[var(--muted)]">Lưu lúc {new Date(draftState.savedAt).toLocaleString("vi-VN")}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button className="rounded-md bg-[var(--green-600)] px-4 py-2 text-sm font-black text-white" type="button" onClick={onResumeDraft}>Tiếp tục bản nháp</button>
+            <button className="rounded-md border border-[var(--line)] bg-white px-4 py-2 text-sm font-black text-[var(--navy-800)]" type="button" onClick={onDiscardDraft}>Bỏ bản nháp</button>
+          </div>
+        </div>
+      )}
+      <form id="initiative-form-card" className="card overflow-hidden" onSubmit={handleFormSubmit}>
+        <div className="border-b border-[var(--line)] bg-white px-5 py-4 sm:px-7">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <PanelTitle>{editingId ? "Cập nhật sáng kiến" : "Tạo sáng kiến"}</PanelTitle>
+              <p className="mt-1 text-sm font-semibold text-[var(--muted)]">Hoàn thiện thông tin theo 4 bước, có thể lưu nháp trên máy này.</p>
+            </div>
+            <button className="w-fit rounded-md border border-[var(--line)] bg-white px-4 py-2 text-sm font-black text-[var(--navy-800)]" type="button" onClick={onSaveDraft}>
+              Lưu nháp
+            </button>
+          </div>
         </div>
 
-        <div className="border-b border-[var(--line)] bg-[var(--mist)] px-5 py-4 sm:px-7">
-          <div className="grid gap-2 sm:grid-cols-5">
-            {formSteps.map((step, index) => (
+        <div className="wizard-stepper sticky top-0 z-20 border-b border-[var(--line)] bg-[var(--mist)]/95 px-5 py-3 backdrop-blur sm:px-7">
+          <div className="grid gap-2 sm:grid-cols-4">
+            {wizardSteps.map((step, index) => {
+              const isCurrent = currentStep === step.id;
+              const isDone = stepDone(step.id);
+              const hasError = stepHasErrors(step.id);
+              return (
               <button
                 type="button"
                 key={step.title}
-                onClick={() => goToSection(step.id)}
-                title={`Tới mục ${step.title}`}
-                className={`rounded-lg border px-3 py-3 text-left transition hover:border-[var(--green-500)] hover:bg-white ${step.done ? "border-[var(--green-500)] bg-white" : "border-[var(--line)] bg-white/65"}`}
+                onClick={() => goToStep(step.id)}
+                className={`rounded-lg border px-3 py-3 text-left transition hover:border-[var(--green-500)] hover:bg-white ${isCurrent ? "border-[var(--green-600)] bg-white shadow-sm" : hasError ? "border-red-300 bg-red-50" : isDone ? "border-[var(--green-500)] bg-white" : "border-[var(--line)] bg-white/65"}`}
+                aria-current={isCurrent ? "step" : undefined}
               >
                 <div className="flex items-center gap-2">
-                  <span className={`grid h-6 w-6 place-items-center rounded-full text-xs font-black ${step.done ? "bg-[var(--green-600)] text-white" : "bg-[var(--blue-100)] text-[var(--blue-700)]"}`}>
-                    {index + 1}
+                  <span className={`grid h-6 w-6 place-items-center rounded-full text-xs font-black ${hasError ? "bg-red-600 text-white" : isDone ? "bg-[var(--green-600)] text-white" : "bg-[var(--blue-100)] text-[var(--blue-700)]"}`}>
+                    {isDone && !hasError ? "✓" : index + 1}
                   </span>
                   <span className="min-w-0 truncate text-xs font-black text-[var(--navy-900)]">{step.title}</span>
                 </div>
               </button>
-            ))}
+              );
+            })}
           </div>
         </div>
 
-        <div className="grid gap-x-5 gap-y-5 px-5 py-6 sm:px-7 md:grid-cols-2">
+        {(formMessage || currentStepErrors.length > 0) && (
+          <div className="border-b border-[var(--line)] bg-white px-5 py-4 sm:px-7">
+            {currentStepErrors.length > 0 && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+                <p>Vui lòng kiểm tra {currentStepErrors.length} lỗi trong bước hiện tại.</p>
+                <ul className="mt-2 list-disc pl-5">
+                  {currentStepErrors.slice(0, 4).map(([key, message]) => <li key={key}>{message}</li>)}
+                </ul>
+              </div>
+            )}
+            {formMessage && <p className="mt-3 text-sm font-bold text-[var(--navy-800)]">{formMessage}</p>}
+          </div>
+        )}
+
+        {currentStep === "general" && (
+        <div data-form-step="general" className="grid gap-x-5 gap-y-5 px-5 py-6 sm:px-7 md:grid-cols-2">
           <label className="block md:col-span-2">
             <span className="text-sm font-black text-[var(--navy-900)]">Tên sáng kiến</span>
             <input
@@ -2300,6 +2833,7 @@ function InitiativeForm({
               value={form.ten}
               onChange={(event) => updateForm("ten", event.target.value)}
               placeholder="Ví dụ: Tối ưu tiêu thụ năng lượng tại văn phòng"
+              aria-invalid={Boolean(fieldErrors.ten)}
             />
             <FieldError message={fieldErrors.ten} />
           </label>
@@ -2342,6 +2876,7 @@ function InitiativeForm({
               onChange={(event) => updateForm("email", event.target.value)}
               placeholder="name@pvn.vn"
               type="email"
+              aria-invalid={Boolean(fieldErrors.email)}
             />
             <FieldError message={fieldErrors.email} />
           </label>
@@ -2353,6 +2888,7 @@ function InitiativeForm({
               value={form.thoiGianTu}
               onChange={(event) => updateForm("thoiGianTu", event.target.value)}
               type="date"
+              aria-invalid={Boolean(fieldErrors.thoiGian)}
             />
           </label>
 
@@ -2363,12 +2899,15 @@ function InitiativeForm({
               value={form.thoiGianDen}
               onChange={(event) => updateForm("thoiGianDen", event.target.value)}
               type="date"
+              aria-invalid={Boolean(fieldErrors.thoiGian)}
             />
             <FieldError message={fieldErrors.thoiGian} />
           </label>
         </div>
+        )}
 
-        <div id="sec-authors" className="scroll-mt-24 border-y border-[var(--line)] bg-[var(--mist)] px-5 py-6 sm:px-7">
+        {currentStep === "authors" && (
+        <div data-form-step="authors" className="bg-[var(--mist)] px-5 py-6 sm:px-7">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <PanelTitle>Thông tin tác giả</PanelTitle>
@@ -2396,7 +2935,7 @@ function InitiativeForm({
             {form.danhSachTacGia.map((author, index) => (
               <div key={index} className="grid gap-4 rounded-lg border border-[var(--line)] bg-white p-4 md:grid-cols-2 md:items-start">
                 <FormField
-                  label={authorMode === "solo" && index === 0 ? "Tác giả" : `Đồng tác giả ${index + 1}`}
+                  label={index === 0 ? "Tác giả chính" : `Đồng tác giả ${index}`}
                   error={fieldErrors[`author.${index}.hoTen`]}
                 >
                   <input
@@ -2404,6 +2943,7 @@ function InitiativeForm({
                     value={author.hoTen}
                     onChange={(event) => updateAuthor(index, "hoTen", event.target.value)}
                     placeholder="Nhập họ và tên"
+                    aria-invalid={Boolean(fieldErrors[`author.${index}.hoTen`])}
                   />
                 </FormField>
                 <FormField label="Chức vụ">
@@ -2436,6 +2976,7 @@ function InitiativeForm({
                       onChange={(event) => updateAuthor(index, "email", event.target.value)}
                       placeholder="name@pvn.vn"
                       type="email"
+                      aria-invalid={Boolean(fieldErrors[`author.${index}.email`])}
                     />
                     {authorMode === "team" && index > 0 && (
                       <button
@@ -2461,10 +3002,11 @@ function InitiativeForm({
             )}
           </div>
         </div>
+        )}
 
-        <FormSectionHeader title="Nội dung" id="sec-content" />
-        <div className="grid gap-5 px-5 py-6 sm:px-7">
-          {contentFields.map(({ key, label, placeholder }) => (
+        {currentStep === "content" && (
+        <div data-form-step="content" className="grid gap-5 px-5 py-6 sm:px-7">
+          {[...contentFields, ...effectivenessFields].map(({ key, label, placeholder }) => (
             <TextArea
               key={key}
               label={label}
@@ -2475,23 +3017,48 @@ function InitiativeForm({
             />
           ))}
         </div>
+        )}
 
-        <FormSectionHeader title="Hiệu quả" id="sec-impact" />
-        <div className="grid gap-5 px-5 py-6 sm:px-7">
-          {effectivenessFields.map(({ key, label, placeholder }) => (
-            <TextArea
-              key={key}
-              label={label}
-              value={form[key] as string}
-              onChange={(value) => updateForm(key, value)}
-              placeholder={placeholder}
-              error={fieldErrors[key]}
-            />
-          ))}
-        </div>
-
-        <FormSectionHeader title="Xuất/Gửi" id="sec-submit" />
-        <div className="grid gap-5 px-5 py-6 sm:px-7">
+        {currentStep === "submit" && (
+        <div data-form-step="submit" className="grid gap-5 px-5 py-6 sm:px-7">
+          {previewReady ? (
+            <div className="rounded-xl border border-[var(--line)] bg-white p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <PanelTitle>Bản xem trước</PanelTitle>
+                  <p className="mt-1 text-sm font-semibold text-[var(--muted)]">Dữ liệu hợp lệ và sẵn sàng xuất DOCX hoặc gửi duyệt.</p>
+                </div>
+                <button className="w-fit rounded-md border border-[var(--line)] px-4 py-2 text-sm font-black text-[var(--navy-800)]" type="button" onClick={openPreview}>
+                  Xem lớn
+                </button>
+              </div>
+              <div className="mt-5 grid gap-4 text-sm text-[var(--navy-800)] md:grid-cols-2">
+                <p><span className="font-black">Tên sáng kiến:</span> {form.ten}</p>
+                <p><span className="font-black">Lĩnh vực:</span> {form.linhVuc}</p>
+                <p><span className="font-black">Đơn vị chủ trì:</span> {form.donVi}</p>
+                <p><span className="font-black">Email:</span> {form.email}</p>
+              </div>
+              <div className="mt-5 rounded-lg bg-[var(--mist)] p-4">
+                <p className="text-sm font-black text-[var(--navy-900)]">Tác giả</p>
+                <p className="mt-1 text-sm font-semibold text-[var(--muted)]">{form.danhSachTacGia.map((author) => author.hoTen).filter(Boolean).join("; ")}</p>
+              </div>
+              <div className="mt-5 grid gap-3">
+                {previewBlocks.map((block) => (
+                  <div key={block.label} className="rounded-lg border border-[var(--line)] bg-white/80 p-3">
+                    <p className="text-xs font-black uppercase text-[var(--muted)]">{block.label}</p>
+                    <p className="mt-1 line-clamp-3 whitespace-pre-line text-sm leading-6 text-[var(--navy-800)]">{block.value || "—"}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-[var(--gold-500)] bg-[var(--gold-100)]/65 p-4">
+              <p className="text-sm font-black text-[var(--navy-900)]">Cần kiểm tra dữ liệu trước khi xem preview.</p>
+              <button className="mt-3 rounded-md bg-[var(--green-600)] px-4 py-2 text-sm font-black text-white" type="button" onClick={openPreview}>
+                Xem bản xem trước
+              </button>
+            </div>
+          )}
           <div className="rounded-xl border border-[var(--line)] bg-[var(--mist)] p-4">
             <h4 className="text-sm font-black text-[var(--navy-900)]">Tệp đăng ký sáng kiến (bản cuối cùng)</h4>
             <p className="mt-1 text-sm font-semibold text-[var(--muted)]">
@@ -2501,9 +3068,10 @@ function InitiativeForm({
               <button
                 className="w-fit rounded-md bg-[var(--blue-700)] px-4 py-2 text-sm font-black text-white"
                 type="button"
-                onClick={exportDocx}
+                onClick={handleExportClick}
+                disabled={docxStatus === "loading"}
               >
-                Xuất tệp đăng ký
+                {docxStatus === "loading" ? "Đang tạo file..." : "Tải file .docx"}
               </button>
               <label className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-md border border-[var(--line)] bg-white px-4 py-2 text-sm font-black text-[var(--navy-800)] transition hover:bg-[var(--mist)]">
                 <FileText className="h-4 w-4 text-[var(--green-600)]" />
@@ -2533,26 +3101,14 @@ function InitiativeForm({
               )}
             </div>
             <FieldError message={fieldErrors.finalDocx} />
+            {docxMessage && (
+              <p className={`mt-2 text-sm font-bold ${docxStatus === "error" ? "text-red-600" : docxStatus === "success" ? "text-[var(--green-700)]" : "text-[var(--muted)]"}`}>
+                {docxMessage}
+              </p>
+            )}
           </div>
-
-          {formMessage && (() => {
-            const success = formMessage.startsWith("Đã gửi") || formMessage.startsWith("Đã cập nhật");
-            return (
-              <div className={`rounded-xl border p-4 text-sm font-bold ${success ? "border-[var(--green-500)] bg-[var(--green-100)] text-[var(--green-700)]" : "border-[var(--gold-500)] bg-[var(--gold-100)] text-[var(--navy-900)]"}`}>
-                <p className="flex items-center gap-2">{success && <ShieldCheck className="h-5 w-5" />}{formMessage}</p>
-                {success && (
-                  <>
-                    <p className="mt-1 text-xs font-black text-[var(--navy-800)]">Hồ sơ đã được ghi nhận. Bạn có thể tải bản Word hoặc xem lại trong danh sách sáng kiến.</p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button type="button" className="rounded-md bg-[var(--blue-700)] px-4 py-2 text-xs font-black text-white" onClick={exportDocx}>Tải file .docx</button>
-                      <button type="button" className="rounded-md border border-[var(--green-600)] bg-white px-4 py-2 text-xs font-black text-[var(--green-700)]" onClick={backToList}>Về danh sách sáng kiến</button>
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })()}
         </div>
+        )}
 
         <div className="sticky bottom-0 flex flex-col gap-3 border-t border-[var(--line)] bg-white/95 px-5 py-5 backdrop-blur sm:flex-row sm:justify-end sm:px-7">
           <button
@@ -2569,22 +3125,50 @@ function InitiativeForm({
           >
             Về danh sách
           </button>
+          {currentIndex > 0 && (
+            <button
+              className="rounded-md border border-[var(--line)] bg-white px-5 py-3 text-sm font-black text-[var(--navy-800)]"
+              type="button"
+              onClick={() => setCurrentStep(wizardSteps[currentIndex - 1].id)}
+            >
+              Quay lại
+            </button>
+          )}
           <button
             className="rounded-md border border-[var(--navy-900)] bg-white px-5 py-3 text-sm font-black text-[var(--navy-900)]"
             type="button"
-            onClick={() => setPreviewOpen(true)}
+            onClick={openPreview}
           >
             Xem bản xem trước
           </button>
-          <button
-            className="rounded-md bg-[var(--green-600)] px-5 py-3 text-sm font-black text-white shadow-md shadow-[var(--green-600)]/20"
-            type="submit"
-          >
-            {editingId ? "Cập nhật sáng kiến" : "Gửi Sáng Kiến"}
-          </button>
+          {currentStep !== "submit" ? (
+            <button
+              className="rounded-md bg-[var(--green-600)] px-5 py-3 text-sm font-black text-white shadow-md shadow-[var(--green-600)]/20"
+              type="button"
+              onClick={goNext}
+            >
+              Tiếp tục
+            </button>
+          ) : (
+            <button
+              className="rounded-md bg-[var(--green-600)] px-5 py-3 text-sm font-black text-white shadow-md shadow-[var(--green-600)]/20 disabled:opacity-60"
+              type="submit"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? "Đang gửi..." : editingId ? "Cập nhật sáng kiến" : "Gửi sáng kiến"}
+            </button>
+          )}
         </div>
       </form>
-      {previewOpen && <FormPreviewModal form={form} onClose={() => setPreviewOpen(false)} onExport={exportDocx} />}
+      {previewOpen && (
+        <FormPreviewModal
+          form={form}
+          onClose={() => setPreviewOpen(false)}
+          onExport={handleExportClick}
+          docxStatus={docxStatus}
+          docxMessage={docxMessage}
+        />
+      )}
     </section>
   );
 }
@@ -2593,10 +3177,12 @@ function InitiativeTable({
   items,
   openDetails,
   likeInitiative,
+  highlightedId,
 }: {
   items: Initiative[];
   openDetails: (item: Initiative) => void;
   likeInitiative: (id: number) => void;
+  highlightedId?: number | null;
 }) {
   return (
     <>
@@ -2609,7 +3195,7 @@ function InitiativeTable({
           <span>Quan tâm</span>
         </div>
         {items.map((item) => (
-          <div key={item.id} className="grid grid-cols-[1.4fr_0.7fr_1fr_0.7fr_0.55fr] gap-3 border-t border-[var(--line)] px-4 py-4 text-sm">
+          <div key={item.id} className={`grid grid-cols-[1.4fr_0.7fr_1fr_0.7fr_0.55fr] gap-3 border-t border-[var(--line)] px-4 py-4 text-sm transition ${highlightedId === item.id ? "initiative-highlight" : ""}`}>
             <button className="text-left font-black text-[var(--blue-700)]" onClick={() => openDetails(item)}>
               {item.ten}
               <span className="mt-1 block text-xs font-semibold text-[var(--muted)]">{item.tacGia} • {item.ngayNop}</span>
@@ -2629,7 +3215,7 @@ function InitiativeTable({
       </div>
       <div className="grid gap-3 p-4 lg:hidden">
         {items.map((item) => (
-          <InitiativeCard key={item.id} item={item} canOpen onOpen={openDetails} likeInitiative={likeInitiative} />
+          <InitiativeCard key={item.id} item={item} canOpen onOpen={openDetails} likeInitiative={likeInitiative} highlighted={highlightedId === item.id} />
         ))}
       </div>
     </>
@@ -2642,16 +3228,18 @@ function InitiativeCard({
   onOpen,
   likeInitiative,
   compact = false,
+  highlighted = false,
 }: {
   item: Initiative;
   canOpen: boolean;
   onOpen: (item: Initiative) => void;
   likeInitiative?: (id: number) => void;
   compact?: boolean;
+  highlighted?: boolean;
 }) {
   const meta = fieldMeta[item.linhVuc];
   return (
-    <article className="card group overflow-hidden rounded-xl transition hover:-translate-y-0.5 hover:shadow-xl">
+    <article className={`card group overflow-hidden rounded-xl transition hover:-translate-y-0.5 hover:shadow-xl ${highlighted ? "initiative-highlight" : ""}`}>
       <div className={`${compact ? "h-28" : "h-36"} relative overflow-hidden`}>
         <img src={meta.image} alt="" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
         <div className="absolute left-3 top-3"><Pill field={item.linhVuc}>{item.linhVuc}</Pill></div>
@@ -2738,7 +3326,7 @@ function DetailDrawer({
           </div>
           {canInteract && (
             <div className="sticky bottom-0 -mx-5 mt-6 flex flex-col gap-3 border-t border-[var(--line)] bg-white/95 px-5 py-4 backdrop-blur sm:-mx-7 sm:flex-row sm:px-7">
-              <button className="rounded-md bg-[var(--green-600)] px-4 py-3 text-sm font-black text-white" onClick={like} aria-label={`Quan tâm sáng kiến ${item.ten}`}>
+              <button className="rounded-md bg-[var(--green-600)] px-4 py-3 text-sm font-black text-white" onClick={like} aria-label={`Quan tâm trong chi tiết: ${item.ten}`}>
                 Quan tâm sáng kiến này
               </button>
               {item.cuaToi && (

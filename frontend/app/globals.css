@@ -176,19 +176,22 @@ html {
 }
 
 .card {
-  border: 1px solid var(--line-soft);
-  background: rgba(255, 255, 255, 0.86);
-  box-shadow: 0 16px 40px rgba(7, 28, 58, 0.055);
+  border: 1px solid rgba(185, 219, 202, 0.95);
+  background:
+    radial-gradient(circle at 10% 4%, rgba(245, 231, 184, 0.2), transparent 13rem),
+    radial-gradient(circle at 88% 10%, rgba(213, 235, 232, 0.24), transparent 15rem),
+    rgba(255, 255, 255, 0.82);
+  box-shadow: 0 18px 40px rgba(7, 28, 58, 0.07);
   border-radius: 14px;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(12px);
 }
 
 .card-soft {
-  border: 1px solid var(--line-soft);
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 12px 30px rgba(7, 28, 58, 0.045);
+  border: 1px solid rgba(185, 219, 202, 0.85);
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 14px 34px rgba(7, 28, 58, 0.055);
   border-radius: 14px;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(12px);
 }
 
 .campaign-hero {
@@ -276,6 +279,28 @@ html {
   line-height: 1.22;
 }
 
+.landing-data-card {
+  border: 1px solid rgba(185, 219, 202, 0.95);
+  background:
+    radial-gradient(circle at 12% 8%, rgba(255, 255, 255, 0.86), transparent 9rem),
+    rgba(255, 255, 255, 0.78);
+  box-shadow: 0 18px 40px rgba(7, 28, 58, 0.07);
+  backdrop-filter: blur(12px);
+}
+
+.landing-data-row {
+  border: 1px solid rgba(216, 230, 220, 0.72);
+  background: rgba(255, 255, 255, 0.42);
+  transition: background 180ms ease, border-color 180ms ease, transform 180ms ease;
+}
+
+button.landing-data-row:hover,
+button.landing-data-row:focus-visible {
+  border-color: rgba(15, 127, 66, 0.28);
+  background: rgba(255, 255, 255, 0.86);
+  transform: translateY(-1px);
+}
+
 .hero-text-action {
   position: relative;
   width: fit-content;
@@ -318,14 +343,14 @@ html {
 }
 
 .landing-dashboard {
-  border: 1px solid rgba(216, 230, 220, 0.96);
+  border: 1px solid rgba(185, 219, 202, 0.95);
   background:
-    radial-gradient(circle at 8% 0%, rgba(230, 185, 77, 0.12), transparent 15rem),
-    radial-gradient(circle at 55% 18%, rgba(79, 159, 163, 0.12), transparent 18rem),
-    rgba(255, 255, 255, 0.86);
-  box-shadow: 0 20px 52px rgba(7, 28, 58, 0.06);
+    radial-gradient(circle at 8% 0%, rgba(230, 185, 77, 0.14), transparent 14rem),
+    radial-gradient(circle at 76% 12%, rgba(213, 235, 232, 0.34), transparent 19rem),
+    rgba(255, 255, 255, 0.82);
+  box-shadow: 0 18px 42px rgba(7, 28, 58, 0.07);
   border-radius: 14px;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(12px);
 }
 
 .landing-dashboard-panel {
@@ -381,6 +406,19 @@ html {
 
 .page-banner > .app-container {
   min-height: inherit;
+}
+
+.page-frame-campaign .page-banner {
+  min-height: 520px;
+}
+
+.wizard-stepper {
+  top: 0;
+}
+
+.initiative-highlight {
+  background: rgba(231, 242, 229, 0.9);
+  box-shadow: inset 4px 0 0 var(--green-600);
 }
 
 .site-footer {
@@ -544,23 +582,38 @@ html {
 }
 
 .campaign-panel {
-  border: 1px solid rgba(216, 230, 220, 0.92);
+  border: 1px solid rgba(185, 219, 202, 0.95);
   background:
-    radial-gradient(circle at 4% 8%, rgba(230, 185, 77, 0.11), transparent 14rem),
-    radial-gradient(circle at 94% 10%, rgba(79, 159, 163, 0.1), transparent 16rem),
+    radial-gradient(circle at 7% 6%, rgba(230, 185, 77, 0.13), transparent 14rem),
+    radial-gradient(circle at 92% 10%, rgba(213, 235, 232, 0.28), transparent 16rem),
     rgba(255, 255, 255, 0.82);
-  box-shadow: 0 16px 40px rgba(7, 28, 58, 0.055);
+  box-shadow: 0 18px 40px rgba(7, 28, 58, 0.07);
   border-radius: 14px;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(12px);
 }
 
 .note-card {
-  border: 1px solid rgba(216, 230, 220, 0.9);
+  border: 1px solid rgba(185, 219, 202, 0.95);
   background:
-    linear-gradient(135deg, rgba(245, 231, 184, 0.52), rgba(255, 255, 255, 0.9) 48%, rgba(220, 239, 237, 0.56));
-  box-shadow: 0 14px 34px rgba(7, 28, 58, 0.05);
+    radial-gradient(circle at 10% 5%, rgba(245, 231, 184, 0.18), transparent 11rem),
+    radial-gradient(circle at 90% 12%, rgba(213, 235, 232, 0.32), transparent 13rem),
+    rgba(255, 255, 255, 0.82);
+  box-shadow: 0 18px 40px rgba(7, 28, 58, 0.07);
   border-radius: 14px;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(12px);
+}
+
+.field-distribution-row {
+  border: 1px solid rgba(216, 230, 220, 0.84);
+  background: rgba(255, 255, 255, 0.52);
+}
+
+.field-distribution-row:hover,
+.field-distribution-row:focus-visible,
+.field-distribution-row.is-active {
+  border-color: rgba(15, 127, 66, 0.3);
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 12px 26px rgba(7, 28, 58, 0.06);
 }
 
 .energy-grid {
@@ -697,6 +750,10 @@ html {
     min-height: 620px;
   }
 
+  .page-frame-campaign .page-banner {
+    min-height: 420px;
+  }
+
   .page-banner-image {
     object-position: 72% center;
   }
@@ -713,6 +770,16 @@ html {
 
   .page-hero-heading {
     font-size: clamp(2.6rem, 13vw, 3.65rem);
+  }
+
+  .wizard-stepper {
+    top: 0;
+    margin-inline: -1.25rem;
+    overflow-x: auto;
+  }
+
+  .wizard-stepper > div {
+    min-width: 620px;
   }
 
   .site-footer {
@@ -815,6 +882,10 @@ html {
 
   .detail-drawer {
     animation-name: sheet-in;
+  }
+
+  .chat-panel {
+    max-height: calc(100vh - 8rem);
   }
 }
 
