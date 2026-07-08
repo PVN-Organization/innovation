@@ -1232,7 +1232,7 @@ function LandingPage({
                 Gửi sáng kiến →
               </button>
               <button className="hero-text-action text-left text-sm font-black" onClick={openChat}>
-                Khơi ý cùng AI →
+                Khám phá ý tưởng cùng AI →
               </button>
             </div>
           </div>
