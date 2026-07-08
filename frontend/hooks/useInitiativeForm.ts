@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useState } from "react";
+import { FormEvent, useCallback, useRef, useState } from "react";
 
 import { API_BASE, ApiError } from "@/lib/api/client";
 import { submitInitiative as apiSubmit } from "@/lib/api/initiatives";
@@ -109,6 +109,7 @@ export function useInitiativeForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [authorMode, setAuthorMode] = useState<AuthorMode>("solo");
   const [finalDocxFile, setFinalDocxFile] = useState<File | null>(null);
+  const stashedAuthorsRef = useRef<AuthorEntry[]>([]);
 
   function updateForm(key: keyof FormState, value: string) {
     setFieldErrors((current) => {
@@ -170,32 +171,35 @@ export function useInitiativeForm({
   function handleModeChange(mode: AuthorMode) {
     setAuthorMode(mode);
     if (mode === "solo") {
-      setForm((current) => ({
-        ...current,
-        danhSachTacGia: [
-          current.danhSachTacGia[0]
-            ? {
-                ...current.danhSachTacGia[0],
-                vaiTro: AUTHOR_ROLE,
-                donVi: current.donVi,
-                email: current.email,
-              }
-            : { ...emptyAuthor(), donVi: current.donVi, email: current.email },
-        ],
-      }));
+      setForm((current) => {
+        // Giữ lại đồng tác giả đã nhập để không mất dữ liệu khi bấm lại Nhóm.
+        if (current.danhSachTacGia.length > 1) {
+          stashedAuthorsRef.current = current.danhSachTacGia.slice(1);
+        }
+        const first = current.danhSachTacGia[0] ?? emptyAuthor();
+        return {
+          ...current,
+          danhSachTacGia: [
+            { ...first, vaiTro: AUTHOR_ROLE, donVi: current.donVi, email: current.email },
+          ],
+        };
+      });
       return;
     }
 
     setForm((current) => {
-      const updated = current.danhSachTacGia.map((author) => ({
+      let updated = current.danhSachTacGia.map((author) => ({
         ...author,
         vaiTro: AUTHOR_ROLE,
       }));
-      return {
-        ...current,
-        danhSachTacGia:
-          updated.length > 1 ? updated : [...updated, emptyAuthor()],
-      };
+      if (updated.length === 1 && stashedAuthorsRef.current.length > 0) {
+        // Khôi phục đồng tác giả đã lưu tạm khi chuyển về Nhóm.
+        updated = [...updated, ...stashedAuthorsRef.current];
+        stashedAuthorsRef.current = [];
+      } else if (updated.length === 1) {
+        updated = [...updated, emptyAuthor()];
+      }
+      return { ...current, danhSachTacGia: updated };
     });
   }
 

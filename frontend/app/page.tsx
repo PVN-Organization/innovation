@@ -4,6 +4,7 @@ import {
   FormEvent,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import type { ReactElement, ReactNode, SVGProps } from "react";
@@ -79,6 +80,15 @@ const Menu: LucideIcon = (props) => (
 const X: LucideIcon = (props) => (
   <IconSvg {...props}><path d="M18 6 6 18" /><path d="m6 6 12 12" /></IconSvg>
 );
+const ChevronDown: LucideIcon = (props) => (
+  <IconSvg {...props}><path d="m6 9 6 6 6-6" /></IconSvg>
+);
+const ChevronLeft: LucideIcon = (props) => (
+  <IconSvg {...props}><path d="m15 18-6-6 6-6" /></IconSvg>
+);
+const ChevronRight: LucideIcon = (props) => (
+  <IconSvg {...props}><path d="m9 18 6-6-6-6" /></IconSvg>
+);
 const PenLine: LucideIcon = (props) => (
   <IconSvg {...props}><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></IconSvg>
 );
@@ -106,6 +116,18 @@ const Lock: LucideIcon = (props) => (
 
 const fields: Field[] = ["Công nghệ", "Quy trình", "An toàn", "Môi trường", "Khác"];
 const statuses = ["Tất cả", "Chờ duyệt", "Đã duyệt"];
+const visualAssets = {
+  hero: "/visuals/hero-watercolor.png",
+  footer: "/visuals/footer-watercolor.png",
+  empty: "/visuals/empty-initiative.png",
+  aiIcon: "/visuals/icon-ai.png",
+  metricLightbulb: "/visuals/icon-metric-lightbulb.png",
+  metricHeart: "/visuals/icon-metric-heart.png",
+  metricTrophy: "/visuals/icon-metric-trophy.png",
+  metricPeople: "/visuals/icon-metric-people.png",
+  bannerCompetition: "/visuals/banner-competition.png",
+  bannerGuideForm: "/visuals/banner-guide-form.png",
+} as const;
 const fieldMeta: Record<Field, { color: string; bg: string; image: string }> = {
   "Công nghệ": {
     color: "var(--blue-700)",
@@ -150,21 +172,21 @@ const innovators = [
     donVi: "Ban Thăm dò - Khai thác Dầu khí",
     quote: "Sáng kiến tốt bắt đầu từ một bất tiện nhỏ được nhìn đủ kỹ.",
     count: 3,
-    image: "/visuals/thumb-process.png",
+    image: "/visuals/honor-1.svg",
   },
   {
     ten: "Trần Hải Yến",
     donVi: "Ban Khoa học Công nghệ & Chuyển đổi số",
     quote: "Dữ liệu không thay con người, dữ liệu giúp chúng ta quyết định tự tin hơn.",
     count: 3,
-    image: "/visuals/thumb-environment.png",
+    image: "/visuals/honor-2.svg",
   },
   {
     ten: "Lê Thu Hương",
     donVi: "Văn phòng Tập đoàn",
     quote: "Đổi mới trong công đoàn là làm cho việc tốt trở nên dễ lặp lại.",
     count: 2,
-    image: "/visuals/thumb-other.png",
+    image: "/visuals/honor-3.svg",
   },
 ];
 
@@ -208,16 +230,21 @@ export default function Home() {
   const [adminField, setAdminField] = useState("Tất cả");
   const [adminStatus, setAdminStatus] = useState("Tất cả");
   const [adminSearch, setAdminSearch] = useState("");
-  const [range, setRange] = useState("Tháng này");
   const [insightsTab, setInsightsTab] = useState<InsightsTab>("competition");
   const [initiativeMode, setInitiativeMode] = useState<"list" | "form">("list");
   const [selectedInitiative, setSelectedInitiative] = useState<Initiative | null>(null);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
-  const [authNotice, setAuthNotice] = useState<string | null>(null);
+  const [authNotice, setAuthNotice] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return new URLSearchParams(window.location.search).get("auth_error")
+      ? "Đăng nhập không thành công. Vui lòng thử lại bằng tài khoản Tập đoàn."
+      : null;
+  });
   const [adminNotice, setAdminNotice] = useState<string | null>(null);
   const [tablePulse, setTablePulse] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState("");
+  const [chatThinking, setChatThinking] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
       from: "bot",
@@ -261,7 +288,6 @@ export default function Home() {
     const params = new URLSearchParams(window.location.search);
     const authError = params.get("auth_error");
     if (!authError) return;
-    setAuthNotice("Đăng nhập không thành công. Vui lòng thử lại bằng tài khoản Tập đoàn.");
     window.history.replaceState({}, "", window.location.pathname);
   }, []);
 
@@ -271,12 +297,17 @@ export default function Home() {
     return false;
   }
 
+  function scrollToViewTop() {
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+  }
+
   function go(nextView: View) {
     if (nextView === "stats") {
       setInsightsTab(isAuthed ? "data" : "overview");
       setView("competition");
       setMobileOpen(false);
       setChatOpen(false);
+      scrollToViewTop();
       return;
     }
     if (nextView === "admin" && !isAdmin) {
@@ -289,6 +320,7 @@ export default function Home() {
     setView(nextView);
     setMobileOpen(false);
     setChatOpen(false);
+    scrollToViewTop();
   }
 
   function startCreate() {
@@ -296,6 +328,7 @@ export default function Home() {
     resetForm();
     setView("initiatives");
     setInitiativeMode("form");
+    scrollToViewTop();
   }
 
   const departmentCounts = useMemo(() => {
@@ -304,6 +337,18 @@ export default function Home() {
       return acc;
     }, {});
     return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  }, [initiatives]);
+
+  // Thống kê đơn vị theo 2 chỉ số thật: số sáng kiến + tổng lượt quan tâm.
+  const departmentStats = useMemo(() => {
+    const acc: Record<string, { soSangKien: number; quanTam: number }> = {};
+    for (const item of initiatives) {
+      const cur = acc[item.donVi] ?? { soSangKien: 0, quanTam: 0 };
+      cur.soSangKien += 1;
+      cur.quanTam += item.quanTam;
+      acc[item.donVi] = cur;
+    }
+    return Object.entries(acc).map(([ten, v]) => ({ ten, ...v }));
   }, [initiatives]);
 
   const publicFiltered = useMemo(
@@ -354,20 +399,21 @@ export default function Home() {
   }, [publicFiltered]);
 
   const leaderBoard = useMemo(() => {
-    const counts = initiatives.reduce<Record<string, { donVi: string; count: number }>>(
+    const counts = initiatives.reduce<Record<string, { donVi: string; count: number; quanTam: number }>>(
       (acc, item) => {
-        acc[item.tacGia] = {
-          donVi: item.donVi,
-          count: (acc[item.tacGia]?.count ?? 0) + 1,
-        };
+        const cur = acc[item.tacGia] ?? { donVi: item.donVi, count: 0, quanTam: 0 };
+        cur.donVi = item.donVi;
+        cur.count += 1;
+        cur.quanTam += item.quanTam;
+        acc[item.tacGia] = cur;
         return acc;
       },
       {},
     );
     return Object.entries(counts)
-      .map(([ten, info]) => ({ ten, donVi: info.donVi, soSangKien: info.count }))
+      .map(([ten, info]) => ({ ten, donVi: info.donVi, soSangKien: info.count, quanTam: info.quanTam }))
       .sort((a, b) => b.soSangKien - a.soSangKien)
-      .slice(0, 5);
+      .slice(0, 10);
   }, [initiatives]);
 
   const totals = useMemo(() => {
@@ -406,9 +452,13 @@ export default function Home() {
     if (targetView === "stats") {
       setInsightsTab("data");
       setView("competition");
+      scrollToViewTop();
       return;
     }
-    if (targetView) setView(targetView);
+    if (targetView) {
+      setView(targetView);
+      scrollToViewTop();
+    }
   }
 
   function handleLogin() {
@@ -467,8 +517,7 @@ export default function Home() {
       "Đơn vị",
       "Trạng thái",
       "Quan tâm",
-      "Điểm",
-      "Tag giải thưởng",
+      "Ngày nộp",
     ];
     const rows = adminItems.map((item) => [
       item.ten,
@@ -477,8 +526,7 @@ export default function Home() {
       item.donVi,
       item.trangThai,
       String(item.quanTam),
-      String(item.diem),
-      item.giaiThuong,
+      item.ngayNop,
     ]);
     const csv = [header, ...rows]
       .map((row) => row.map((cell) => `"${cell.replaceAll('"', '""')}"`).join(","))
@@ -589,31 +637,32 @@ export default function Home() {
   function sendChat(text: string) {
     const message = text.trim();
     if (!message) return;
-    const suggestions = aiSuggestions(message);
-    setChatMessages((items) => [
-      ...items,
-      { from: "user", text: message },
-      { from: "bot", text: aiAnswer(message), suggestions },
-    ]);
+    setChatMessages((items) => [...items, { from: "user", text: message }]);
     setChatInput("");
+    setChatThinking(true);
+    window.setTimeout(() => {
+      const suggestions = aiSuggestions(message);
+      setChatMessages((items) => [...items, { from: "bot", text: aiAnswer(message), suggestions }]);
+      setChatThinking(false);
+    }, 650);
   }
 
   return (
     <main className="app-shell text-[var(--navy-900)]">
       {(authLoading || initiativesLoading) && (
-        <div className="fixed inset-x-0 top-16 z-50 bg-[var(--navy-900)] px-4 py-2 text-center text-sm font-bold text-white lg:top-[76px]">
+        <div className="app-notice app-notice-dark">
           Đang tải dữ liệu...
         </div>
       )}
       {authNotice && (
-        <div className="fixed inset-x-0 top-16 z-50 bg-[var(--gold-500)] px-4 py-2 text-center text-sm font-bold text-[var(--navy-900)] lg:top-[76px]">
+        <div className="app-notice app-notice-sun">
           {authNotice}
           <button className="ml-3 underline" onClick={() => setAuthNotice(null)}>Đóng</button>
         </div>
       )}
-      {initiativesError && (
-        <div className="fixed inset-x-0 top-16 z-50 bg-red-600 px-4 py-2 text-center text-sm font-bold text-white lg:top-[76px]">
-          {initiativesError}
+      {initiativesError && !initiativesLoading && (
+        <div className="app-notice app-notice-soft">
+          Tạm thời chưa tải được dữ liệu. Hệ thống sẽ tự động thử lại.
         </div>
       )}
       <Navigation
@@ -653,7 +702,6 @@ export default function Home() {
 
       {view === "initiatives" && (
         <InitiativesPage
-          isAuthed={isAuthed}
           canRegisterInitiative={canRegisterInitiative}
           mode={initiativeMode}
           setMode={setInitiativeMode}
@@ -697,12 +745,12 @@ export default function Home() {
           isAuthed={isAuthed}
           activeTab={insightsTab}
           setActiveTab={setInsightsTab}
-          range={range}
-          setRange={setRange}
           items={detailedFiltered}
           initiatives={initiatives}
+          isLoading={initiativesLoading}
           totals={totals}
           departmentCounts={departmentCounts}
+          departmentStats={departmentStats}
           fieldCounts={fieldCounts}
           leaderBoard={leaderBoard}
           selectedDepartment={selectedDepartment}
@@ -753,6 +801,8 @@ export default function Home() {
         />
       )}
 
+      <SiteFooter />
+
       {selectedInitiative && (
         <DetailDrawer
           item={selectedInitiative}
@@ -775,6 +825,7 @@ export default function Home() {
           open={chatOpen}
           setOpen={setChatOpen}
           messages={chatMessages}
+          thinking={chatThinking}
           input={chatInput}
           setInput={setChatInput}
           send={sendChat}
@@ -836,7 +887,7 @@ function Navigation({
 
   return (
     <header className="top-nav fixed inset-x-0 top-0 z-40">
-      <div className="app-container grid h-16 grid-cols-[minmax(230px,290px)_minmax(0,1fr)_auto] items-center gap-3 lg:h-[76px]">
+      <div className="app-container grid h-20 grid-cols-[minmax(230px,300px)_minmax(0,1fr)_auto] items-center gap-3 lg:h-24">
         <button className="focus-ring flex min-w-0 items-center gap-3 text-left" onClick={() => go("landing")}>
           <img src="/logo-pvn.png" alt="Petrovietnam" className="h-10 w-auto object-contain" />
           <span className="min-w-0 leading-tight">
@@ -849,7 +900,7 @@ function Navigation({
           </span>
         </button>
 
-        <nav className="hidden min-w-0 items-center justify-center gap-5 min-[1360px]:flex">
+        <nav className="hidden min-w-0 items-center justify-center gap-6 min-[1180px]:flex">
           {visibleNavItems.map((item) => {
             const Icon = item.icon;
             return (
@@ -870,17 +921,17 @@ function Navigation({
           })}
         </nav>
 
-        <div className="hidden shrink-0 items-center gap-2 min-[1360px]:flex">
+        <div className="hidden shrink-0 items-center gap-4 min-[1180px]:flex">
           {isGuest ? (
             <>
               <button
-                className="whitespace-nowrap rounded-md border border-[var(--green-600)] bg-white px-3 py-2 text-sm font-black text-[var(--green-700)]"
+                className="top-nav-action whitespace-nowrap text-sm font-black text-[var(--green-700)]"
                 onClick={() => handleGo("initiatives")}
               >
                 Đăng ký sáng kiến
               </button>
               <button
-                className="whitespace-nowrap rounded-md bg-[var(--green-600)] px-3 py-2 text-sm font-black text-white shadow-md shadow-[var(--green-600)]/20"
+                className="top-nav-login whitespace-nowrap rounded-md bg-[var(--green-600)] px-3 py-2 text-sm font-black text-white shadow-md shadow-[var(--green-600)]/20"
                 onClick={login}
               >
                 Đăng nhập tài khoản Tập đoàn
@@ -888,17 +939,11 @@ function Navigation({
             </>
           ) : (
             <>
-              <span className="max-w-[220px] truncate rounded-md bg-white px-3 py-2 text-sm font-bold text-[var(--muted)]" title={roleLabel}>
+              <span className="max-w-[220px] truncate text-sm font-bold text-[var(--muted)]" title={roleLabel}>
                 {roleLabel}
               </span>
               <button
-                className="whitespace-nowrap rounded-md bg-[var(--green-600)] px-3 py-2 text-sm font-black text-white shadow-md shadow-[var(--green-600)]/20"
-                onClick={handleCreate}
-              >
-                Tạo sáng kiến
-              </button>
-              <button
-                className="rounded-md border border-[var(--line)] bg-white px-3 py-2 text-sm font-black text-[var(--navy-800)]"
+                className="top-nav-action text-sm font-black text-[var(--navy-800)]"
                 onClick={logout}
               >
                 Đăng xuất
@@ -908,7 +953,7 @@ function Navigation({
         </div>
 
         <button
-          className="grid h-10 w-10 place-items-center rounded-md border border-[var(--line)] bg-white text-[var(--navy-900)] min-[1360px]:hidden"
+          className="grid h-10 w-10 place-items-center rounded-md border border-[var(--line)] bg-white/82 text-[var(--navy-900)] shadow-sm backdrop-blur min-[1180px]:hidden"
           onClick={() => setMobileOpen(!mobileOpen)}
           aria-label={mobileOpen ? "Đóng menu" : "Mở menu"}
         >
@@ -917,7 +962,7 @@ function Navigation({
       </div>
 
       {mobileOpen && (
-        <div className="border-t border-[var(--line)] bg-white/96 px-4 py-4 shadow-xl min-[1360px]:hidden">
+        <div className="mx-3 rounded-xl border border-[var(--line)] bg-white/92 px-4 py-4 shadow-xl backdrop-blur min-[1180px]:hidden">
           <div className="mx-auto grid max-w-7xl gap-2">
             <div className="mb-2 rounded-lg bg-[var(--mist)] px-3 py-2 text-sm font-black text-[var(--navy-800)]">
               {roleLabel}
@@ -1001,38 +1046,34 @@ function LandingPage({
 }) {
   return (
     <>
-      <section className="energy-flow campaign-hero relative min-h-[520px] overflow-hidden bg-white text-[var(--navy-900)] sm:min-h-[560px]">
+      <section className="campaign-hero relative overflow-hidden text-[var(--ink)]">
         <img
-          src="/visuals/hero-green-innovation-flow.png"
-          alt="Dòng chảy sáng kiến xanh số"
-          className="absolute inset-0 h-full w-full object-cover object-center"
+          src={visualAssets.hero}
+          alt="Mầm sáng kiến xanh số trên nền năng lượng bền vững"
+          className="campaign-hero-image absolute inset-0 h-full w-full object-cover"
         />
-        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.98)_0%,rgba(255,255,255,0.9)_31%,rgba(255,255,255,0.42)_58%,rgba(255,255,255,0.08)_82%)]" />
-        <div className="absolute inset-x-0 bottom-0 h-24 bg-[linear-gradient(180deg,transparent,var(--mist))]" />
-        <div className="energy-grid absolute inset-0 opacity-55" />
-        <div className="app-container relative z-10 pb-16 pt-24 sm:pb-20 sm:pt-28 lg:pb-24 lg:pt-32">
-          <div className="max-w-[760px]">
-            <p className="mb-3 w-fit rounded-full bg-white/80 px-4 py-2 text-xs font-black uppercase text-[var(--green-700)] shadow-sm">
-              Cổng thông tin sáng kiến Công đoàn Bộ máy QL&ĐH Petrovietnam
-            </p>
-            <h1 className="campaign-title text-balance text-[2.75rem] font-black leading-[0.98] text-[var(--navy-900)] sm:text-6xl lg:text-[5rem]">
-              Sáng kiến hôm nay, đột phá ngày mai
+        <div className="campaign-hero-overlay absolute inset-0" />
+        <div className="absolute inset-x-0 bottom-0 h-28 bg-[linear-gradient(180deg,transparent,var(--paper))]" />
+        <div className="app-container relative z-10 flex min-h-[680px] items-center pb-16 pt-36 sm:min-h-[600px] sm:pb-18 sm:pt-28 lg:min-h-[660px] lg:pb-24 lg:pt-32">
+          <div className="max-w-[860px]">
+            <h1 className="campaign-title text-balance text-[2.35rem] font-black leading-[0.98] text-[var(--ink)] md:text-[3.55rem] xl:text-[5rem]">
+              Sáng kiến hôm nay,<br className="hidden xl:block" /> đột phá ngày mai
             </h1>
-            <p className="mt-5 max-w-xl text-base font-semibold leading-8 text-[var(--navy-800)] sm:text-lg">
-              Đóng góp ý tưởng, tìm cảm hứng với AI, lan tỏa thi đua đổi mới trong Bộ máy QL&ĐH Petrovietnam.
+            <p className="mt-5 max-w-xl text-base font-semibold leading-8 text-[var(--ink)] sm:text-lg">
+              Gửi ý tưởng, tìm cảm hứng với AI và lan tỏa những sáng kiến xanh - số trong Bộ máy QL&ĐH Petrovietnam.
             </p>
-            <div className="mt-7 grid max-w-xl grid-cols-2 gap-3 sm:grid-cols-4">
-              <CampaignMetric icon={Lightbulb} value={String(initiatives.length)} label="Sáng kiến" color="var(--green-600)" />
-              <CampaignMetric icon={Heart} value={compactNumber(totals.interests)} label="Quan tâm" color="var(--green-500)" />
-              <CampaignMetric icon={Trophy} value={String(departmentCounts.length)} label="Đơn vị" color="var(--gold-500)" />
-              <CampaignMetric icon={Users} value={String(fields.length)} label="Lĩnh vực" color="var(--blue-700)" />
+            <div className="mt-7 grid max-w-[820px] grid-cols-2 gap-4 sm:grid-cols-4">
+              <CampaignMetric image={visualAssets.metricLightbulb} value={String(initiatives.length)} label="Sáng kiến" color="var(--leaf-deep)" />
+              <CampaignMetric image={visualAssets.metricHeart} value={compactNumber(totals.interests)} label="Quan tâm" color="var(--leaf)" />
+              <CampaignMetric image={visualAssets.metricTrophy} value={String(departmentCounts.length)} label="Đơn vị" color="var(--sun)" />
+              <CampaignMetric image={visualAssets.metricPeople} value={String(fields.length)} label="Lĩnh vực" color="var(--teal)" />
             </div>
-            <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-              <button className="rounded-md bg-[var(--green-600)] px-5 py-3 text-sm font-black text-white shadow-lg shadow-green-900/15" onClick={startCreate}>
-                Viết sáng kiến
+            <div className="hero-actions mt-7 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
+              <button className="hero-text-action hero-text-action-primary text-left text-sm font-black" onClick={startCreate}>
+                Gửi sáng kiến →
               </button>
-              <button className="rounded-md border border-[var(--green-600)] bg-white/85 px-5 py-3 text-sm font-black text-[var(--green-700)]" onClick={openChat}>
-                Khám phá với AI
+              <button className="hero-text-action text-left text-sm font-black" onClick={openChat}>
+                Khơi ý cùng AI →
               </button>
             </div>
           </div>
@@ -1040,7 +1081,7 @@ function LandingPage({
       </section>
 
       <section className="app-container relative z-10 mt-4 lg:-mt-4">
-        <div className="grid gap-4 lg:grid-cols-[1fr_330px]">
+        <div className="grid gap-5 lg:grid-cols-[1fr_380px]">
           <div className="card grid overflow-hidden rounded-xl md:grid-cols-4">
             <LandingShortcut icon={Trophy} title="Top Ban/Văn phòng" text="Có nhiều sáng kiến nhất" action="Xem bảng thi đua" onClick={() => go("competition")} color="var(--gold-500)" />
             <LandingShortcut icon={Users} title="Top cá nhân" text="Truyền cảm hứng đổi mới" action="Xem chi tiết" onClick={() => go("competition")} color="var(--green-600)" />
@@ -1065,17 +1106,16 @@ function LandingPage({
         go={go}
       />
 
-      <HonorFooter />
+      <HonorStories />
     </>
   );
 }
 
-function CampaignMetric({ icon: Icon, value, label, color }: { icon: LucideIcon; value: string; label: string; color: string }) {
+function CampaignMetric({ value, label, color }: { image: string; value: string; label: string; color: string }) {
   return (
-    <div className="campaign-metric rounded-xl bg-white/82 p-3 shadow-sm backdrop-blur">
-      <Icon className="h-6 w-6" style={{ color }} />
-      <p className="mt-2 text-2xl font-black leading-none" style={{ color }}>{value}</p>
-      <p className="mt-1 text-xs font-black text-[var(--navy-800)]">{label}</p>
+    <div className="campaign-metric rounded-xl bg-white/82 shadow-sm backdrop-blur">
+      <p className="campaign-metric-value font-black leading-none" style={{ color }}>{value}</p>
+      <p className="campaign-metric-label font-black text-[var(--ink)]">{label}</p>
     </div>
   );
 }
@@ -1096,10 +1136,10 @@ function LandingShortcut({
   color: string;
 }) {
   return (
-    <button className="group border-b border-[var(--line)] p-5 text-left transition hover:bg-[var(--mist)] md:border-b-0 md:border-r" onClick={onClick}>
+    <button className="group border-b border-[var(--line)] p-6 text-left transition hover:bg-[var(--paper-soft)] md:border-b-0 md:border-r xl:p-7" onClick={onClick}>
       <div className="flex items-start gap-3">
-        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white shadow-sm" style={{ color }}>
-          <Icon className="h-6 w-6" />
+        <span className="grid h-13 w-13 shrink-0 place-items-center rounded-full bg-white shadow-sm" style={{ color }}>
+          <Icon className="h-7 w-7" />
         </span>
         <span className="min-w-0">
           <span className="block font-black text-[var(--navy-900)]">{title}</span>
@@ -1114,12 +1154,12 @@ function LandingShortcut({
 function LandingAiCard({ isAuthed, openChat, showLogin }: { isAuthed: boolean; openChat: () => void; showLogin: () => void }) {
   const prompts = ["Tiết kiệm chi phí", "Nâng cao an toàn", "Tối ưu quy trình", "Chuyển đổi số"];
   return (
-    <article className="card relative overflow-hidden rounded-xl p-5">
+    <article className="card relative overflow-hidden rounded-xl p-6 xl:p-7">
       <div className="absolute right-4 top-4 h-2.5 w-2.5 rounded-full bg-[var(--green-500)] shadow-[0_0_0_6px_rgba(25,169,87,0.12)]" />
       <div className="flex items-center gap-4">
-        <div className="ai-bot-illustration shrink-0" aria-hidden="true" />
+        <img src={visualAssets.aiIcon} alt="" className="ai-bot-illustration shrink-0 object-contain" />
         <div>
-          <h3 className="font-black text-[var(--navy-900)]">Trò chuyện cùng AI</h3>
+          <PanelTitle>Trò chuyện cùng AI</PanelTitle>
           <p className="mt-1 text-sm leading-5 text-[var(--muted)]">Gợi ý ý tưởng, tìm cảm hứng từ kho sáng kiến.</p>
         </div>
       </div>
@@ -1130,7 +1170,7 @@ function LandingAiCard({ isAuthed, openChat, showLogin }: { isAuthed: boolean; o
           </button>
         ))}
       </div>
-      <button className="mt-5 w-full rounded-md bg-[var(--green-600)] px-4 py-3 text-sm font-black text-white" onClick={isAuthed ? openChat : showLogin}>
+      <button className="mt-5 w-full rounded-md bg-[var(--leaf-deep)] px-4 py-3 text-sm font-black text-white" onClick={isAuthed ? openChat : showLogin}>
         {isAuthed ? "Chat với trợ lý AI" : "Đăng nhập để hỏi AI"}
       </button>
     </article>
@@ -1166,12 +1206,12 @@ function BasicStats({
   const topInitiatives = filtered.slice().sort((a, b) => b.quanTam - a.quanTam).slice(0, 3);
 
   return (
-    <section className="app-container py-7 lg:py-9">
+    <section className="app-container pb-3 pt-6 lg:pb-4 lg:pt-8">
       <SectionTitle title="Trang thống kê cơ bản" icon={Sparkles} />
       <ActiveFilterChips filters={filterSummary.filter((item) => item.key !== "status" && item.key !== "search")} clearFilters={clearFilters} />
       <div className="landing-dashboard overflow-hidden rounded-xl lg:grid lg:grid-cols-[1fr_1.08fr_1fr]">
         <section className="landing-dashboard-panel border-b border-[var(--line)] p-5 lg:border-b-0 lg:border-r">
-          <h3 className="text-2xl font-black leading-tight text-[var(--navy-900)]">Bảng thi đua</h3>
+          <PanelTitle>Bảng thi đua</PanelTitle>
           <div className="mt-5 grid grid-cols-3 rounded-lg bg-[var(--mist)] p-1 text-center text-xs font-black text-[var(--muted)]">
             <button className="rounded-md bg-white px-2 py-2 text-[var(--green-700)] shadow-sm">Theo ban/văn phòng</button>
             <button className="px-2 py-2" onClick={() => go("competition")}>Theo cá nhân</button>
@@ -1200,7 +1240,7 @@ function BasicStats({
 
         <section className="landing-dashboard-panel border-b border-[var(--line)] p-5 lg:border-b-0 lg:border-r">
           <div className="flex items-start justify-between gap-3">
-            <h3 className="font-black text-[var(--navy-900)]">Sáng kiến theo lĩnh vực</h3>
+            <PanelTitle>Sáng kiến theo lĩnh vực</PanelTitle>
             <button className="rounded-md border border-[var(--line)] bg-white px-3 py-2 text-xs font-black text-[var(--muted)]" onClick={() => go("stats")}>
               Năm 2024
             </button>
@@ -1216,7 +1256,7 @@ function BasicStats({
 
         <section className="landing-dashboard-panel p-5">
           <div className="flex items-start justify-between gap-3">
-            <h3 className="font-black text-[var(--navy-900)]">Top sáng kiến được quan tâm</h3>
+            <PanelTitle>Top sáng kiến được quan tâm</PanelTitle>
             <button className="rounded-md border border-[var(--line)] bg-white px-3 py-2 text-xs font-black text-[var(--muted)]" onClick={() => go("competition")}>
               Tháng này
             </button>
@@ -1264,6 +1304,10 @@ function FieldFlowChart({
     width: 20 + Math.max(12, count * 10),
   }));
   const conic = buildDonutGradient(fieldCounts);
+
+  if (total === 0) {
+    return <div className="mt-4"><EmptyHint text="Chưa có dữ liệu lĩnh vực." /></div>;
+  }
 
   return (
     <div className="mt-4 grid gap-4 sm:grid-cols-[1.1fr_150px] sm:items-center">
@@ -1314,7 +1358,6 @@ function FieldFlowChart({
 }
 
 function InitiativesPage({
-  isAuthed,
   canRegisterInitiative,
   mode,
   setMode,
@@ -1351,7 +1394,6 @@ function InitiativesPage({
   login,
   tablePulse,
 }: {
-  isAuthed: boolean;
   canRegisterInitiative: boolean;
   mode: "list" | "form";
   setMode: (mode: "list" | "form") => void;
@@ -1390,7 +1432,7 @@ function InitiativesPage({
 }) {
   if (!canRegisterInitiative) {
     return (
-    <PageFrame eyebrow="Sáng kiến" title="Đăng nhập để gửi và xem chi tiết sáng kiến" variant="campaign">
+    <PageFrame eyebrow="Sáng kiến" title="Đăng nhập để gửi và xem chi tiết sáng kiến" variant="campaign" banner="guide">
         <AuthGatePanel
           title="Bạn đang xem bản public"
           description="Danh sách dưới đây chỉ hiển thị tóm tắt. Đăng nhập tài khoản Tập đoàn để tạo sáng kiến, xem chi tiết, hỏi AI và thể hiện quan tâm."
@@ -1408,7 +1450,7 @@ function InitiativesPage({
 
   if (mode === "form") {
     return (
-      <PageFrame eyebrow="Sáng kiến" title={editingId ? "Chỉnh sửa sáng kiến" : "Biểu mẫu đăng ký sáng kiến"} variant="campaign">
+      <PageFrame eyebrow="Sáng kiến" title={editingId ? "Chỉnh sửa sáng kiến" : "Biểu mẫu đăng ký sáng kiến"} variant="campaign" banner="guide">
         <InitiativeForm
           form={form}
           formMessage={formMessage}
@@ -1435,7 +1477,7 @@ function InitiativesPage({
   const mine = items.filter((item) => item.cuaToi).slice(0, 4);
 
   return (
-    <PageFrame eyebrow="Sáng kiến" title="Danh sách và sáng kiến của tôi" variant="campaign">
+    <PageFrame eyebrow="Sáng kiến" title="Danh sách và sáng kiến của tôi" variant="campaign" banner="guide">
       <FilterBar
         selectedDepartment={selectedDepartment}
         selectedField={selectedField}
@@ -1452,7 +1494,7 @@ function InitiativesPage({
         <section className={`card overflow-hidden rounded-xl transition ${tablePulse ? "ring-4 ring-[var(--cyan-100)]" : ""}`}>
           <div className="flex flex-col gap-3 border-b border-[var(--line)] p-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h3 className="font-black">Bảng thống kê sáng kiến</h3>
+              <PanelTitle>Bảng thống kê sáng kiến</PanelTitle>
               <p className="text-sm font-semibold text-[var(--muted)]">{items.length} sáng kiến phù hợp bộ lọc</p>
             </div>
             <button className="rounded-md bg-[var(--green-600)] px-4 py-2 text-sm font-black text-white" onClick={() => setMode("form")}>
@@ -1463,7 +1505,7 @@ function InitiativesPage({
         </section>
         <aside className="grid content-start gap-4">
           <div className="campaign-panel rounded-xl p-5">
-            <h3 className="font-black">Sáng kiến của tôi</h3>
+            <PanelTitle>Sáng kiến của tôi</PanelTitle>
             <p className="mt-2 text-sm leading-6 text-[var(--muted)]">Xem lại và chỉnh sửa các sáng kiến bạn đã nhập trong prototype.</p>
             <div className="mt-4 space-y-3">
               {(mine.length > 0 ? mine : items.slice(0, 3)).map((item) => (
@@ -1476,7 +1518,7 @@ function InitiativesPage({
           </div>
           <div className="note-card rounded-xl p-5">
             <Bot className="h-8 w-8 text-[var(--green-600)]" />
-            <h3 className="mt-3 font-black">Bí ý tưởng?</h3>
+            <PanelTitle className="mt-3">Bí ý tưởng?</PanelTitle>
             <p className="mt-2 text-sm leading-6 text-[var(--navy-800)]">Chat với Trợ lý AI ở góc màn hình để nhận gợi ý theo dữ liệu sáng kiến mẫu.</p>
           </div>
         </aside>
@@ -1572,8 +1614,8 @@ function InsightsDataPanel({
             ))}
           </div>
         </ChartPanel>
-        <ChartPanel className="lg:col-span-4" title="Lĩnh vực / wordcloud">
-          <WordCloud selectedField={selectedField} onSelect={(field) => applyChartFilter("field", field)} />
+        <ChartPanel className="lg:col-span-4" title="Lĩnh vực trọng tâm">
+          <WordCloud total={items.length} selectedField={selectedField} onSelect={(field) => applyChartFilter("field", field)} />
           <DonutChart total={items.length} fieldCounts={fieldCounts} compact selectedField={selectedField} onFieldSelect={(field) => applyChartFilter("field", field)} />
         </ChartPanel>
         <ChartPanel className="lg:col-span-4" title="Mối quan tâm theo tác giả">
@@ -1595,12 +1637,12 @@ function CompetitionPage({
   isAuthed,
   activeTab,
   setActiveTab,
-  range,
-  setRange,
   items,
   initiatives,
+  isLoading,
   totals,
   departmentCounts,
+  departmentStats,
   fieldCounts,
   leaderBoard,
   selectedDepartment,
@@ -1622,14 +1664,14 @@ function CompetitionPage({
   isAuthed: boolean;
   activeTab: InsightsTab;
   setActiveTab: (tab: InsightsTab) => void;
-  range: string;
-  setRange: (value: string) => void;
   items: Initiative[];
   initiatives: Initiative[];
+  isLoading: boolean;
   totals: { approved: number; pending: number; interests: number; topField: Field };
   departmentCounts: [string, number][];
+  departmentStats: { ten: string; soSangKien: number; quanTam: number }[];
   fieldCounts: readonly (readonly [Field, number])[];
-  leaderBoard: { ten: string; donVi: string; soSangKien: number }[];
+  leaderBoard: { ten: string; donVi: string; soSangKien: number; quanTam: number }[];
   selectedDepartment: string;
   selectedField: string;
   selectedStatus: string;
@@ -1646,11 +1688,15 @@ function CompetitionPage({
   login: () => void;
   tablePulse: boolean;
 }) {
+  const [rankMetric, setRankMetric] = useState<"count" | "interest">("count");
   const topInitiatives = initiatives.slice().sort((a, b) => b.quanTam - a.quanTam).slice(0, 6);
-  const awards = initiatives.filter((item) => item.giaiThuong !== "Chờ xét chọn").slice(0, 4);
-  const podium = departmentCounts.slice(0, 3);
-  const spotlight = topInitiatives[0];
   const maxDepartment = Math.max(...departmentCounts.map(([, count]) => count), 1);
+  const metricOf = (s: { soSangKien: number; quanTam: number }) => (rankMetric === "count" ? s.soSangKien : s.quanTam);
+  const departmentRanked = departmentStats.slice().sort((a, b) => metricOf(b) - metricOf(a));
+  const authorRanked = leaderBoard.slice().sort((a, b) => metricOf(b) - metricOf(a));
+  const podium = departmentRanked.slice(0, 3);
+  const maxDeptMetric = Math.max(...departmentRanked.map(metricOf), 1);
+  const metricUnit = rankMetric === "count" ? "sáng kiến" : "lượt quan tâm";
   const insightTabs: { id: InsightsTab; label: string }[] = [
     { id: "overview", label: "Tổng quan" },
     { id: "competition", label: "Bảng thi đua" },
@@ -1658,16 +1704,10 @@ function CompetitionPage({
   ];
 
   return (
-    <PageFrame eyebrow="Thi đua & Thống kê" title="Phong trào sáng kiến Công đoàn Bộ máy QL&ĐH Petrovietnam" variant="campaign">
+    <PageFrame eyebrow="Thi đua & Thống kê" title="Thống kê phong trào thi đua" variant="campaign" banner="competition">
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="max-w-2xl text-sm leading-6 text-[var(--muted)]">Theo dõi sức nóng phong trào, các chỉ số đổi mới và bảng xếp hạng thi đua trong một không gian thống nhất.</p>
-        {isAuthed ? (
-          <select className="rounded-md border border-[var(--line)] bg-white px-3 py-2 text-sm font-black" value={range} onChange={(event) => setRange(event.target.value)}>
-            {["Tháng này", "Quý này", "Năm nay"].map((item) => (
-              <option key={item}>{item}</option>
-            ))}
-          </select>
-        ) : (
+        {!isAuthed && (
           <button className="rounded-md bg-[var(--green-600)] px-4 py-2 text-sm font-black text-white" onClick={login}>
             Đăng nhập để xem chi tiết
           </button>
@@ -1697,14 +1737,14 @@ function CompetitionPage({
           <div className="mt-5 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
             <section className="landing-dashboard rounded-xl p-5">
               <div className="flex items-start justify-between gap-3">
-                <h3 className="font-black text-[var(--navy-900)]">Sáng kiến theo lĩnh vực</h3>
+                <PanelTitle>Sáng kiến theo lĩnh vực</PanelTitle>
                 <button className="text-xs font-black text-[var(--blue-700)]" onClick={() => setActiveTab("data")}>Xem dữ liệu</button>
               </div>
               <FieldFlowChart total={initiatives.length} fieldCounts={fieldCounts} selectedField={selectedField} onFieldSelect={(field) => applyChartFilter("field", field, "stats")} />
             </section>
             <section className="landing-dashboard rounded-xl p-5">
               <div className="flex items-start justify-between gap-3">
-                <h3 className="font-black text-[var(--navy-900)]">Top Ban/Văn phòng</h3>
+                <PanelTitle>Top Ban/Văn phòng</PanelTitle>
                 <button className="text-xs font-black text-[var(--blue-700)]" onClick={() => setActiveTab("competition")}>Xem thi đua</button>
               </div>
               <div className="mt-5 space-y-3">
@@ -1733,99 +1773,82 @@ function CompetitionPage({
         </>
       )}
       {activeTab === "competition" && (
+        isLoading && initiatives.length === 0 ? (
+          <LoadingState label="Đang tải bảng thi đua…" />
+        ) : initiatives.length === 0 ? (
+          <EmptyState title="Chưa có sáng kiến nào" text="Khi có sáng kiến được gửi, bảng xếp hạng thi đua sẽ xuất hiện ở đây." />
+        ) : (
         <>
-      <div className="mb-6 grid gap-4 lg:grid-cols-[1.05fr_1fr]">
-        <section className="campaign-panel rounded-xl p-5">
-          <div className="flex items-center justify-between gap-3">
-            <h3 className="text-2xl font-black text-[var(--navy-900)]">Podium thi đua Ban/Văn phòng</h3>
-            <Pill tone="gold">{range}</Pill>
-          </div>
-          <div className="mt-5 grid items-end gap-3 sm:grid-cols-3">
-            {podium.map(([name, count], index) => (
-              <button
-                key={name}
-                className={`rounded-xl border border-[var(--line)] bg-white p-4 text-left transition hover:-translate-y-0.5 ${index === 0 ? "sm:order-2 sm:min-h-48" : index === 1 ? "sm:order-1 sm:min-h-40" : "sm:order-3 sm:min-h-36"}`}
-                onClick={() => applyChartFilter("department", name, "stats")}
-              >
-                <div className={`grid h-10 w-10 place-items-center rounded-full text-lg font-black ${index === 0 ? "bg-[var(--gold-500)] text-white" : "bg-[var(--green-100)] text-[var(--green-700)]"}`}>{index + 1}</div>
-                <p className="mt-4 line-clamp-2 font-black">{name}</p>
-                <p className="mt-3 text-3xl font-black text-[var(--green-600)]">{count}</p>
-                <p className="text-xs font-bold text-[var(--muted)]">sáng kiến</p>
-              </button>
-            ))}
-          </div>
-        </section>
-        {spotlight && (
-          <section className="campaign-panel relative overflow-hidden rounded-xl p-5">
-            <div className="absolute inset-y-0 right-0 w-1/2 bg-[linear-gradient(90deg,transparent,rgba(29,190,214,0.12))]" />
-            <div className="relative">
-              <div className="mb-3 flex flex-wrap gap-2">
-                <Pill tone="gold">Sáng kiến tiêu biểu</Pill>
-                <Pill field={spotlight.linhVuc}>{spotlight.linhVuc}</Pill>
-              </div>
-              <h3 className="text-2xl font-black leading-tight text-[var(--navy-900)]">{spotlight.ten}</h3>
-              <p className="mt-3 line-clamp-3 text-sm leading-6 text-[var(--muted)]">{spotlight.tomTat}</p>
-              <div className="mt-5 grid grid-cols-2 gap-3">
-                <Metric label="Quan tâm" value={String(spotlight.quanTam)} />
-                <Metric label="Điểm thi đua" value={String(spotlight.diem)} />
-              </div>
-              <button className="mt-5 rounded-md bg-[var(--green-600)] px-4 py-3 text-sm font-black text-white" onClick={() => openDetails(spotlight)}>
-                Xem sáng kiến
-              </button>
-            </div>
-          </section>
-        )}
+      <div className="mb-5 flex flex-wrap items-center gap-3">
+        <MetricToggle metric={rankMetric} onChange={setRankMetric} />
+        <p className="text-xs font-semibold text-[var(--muted)]">Xếp hạng theo {metricUnit}.</p>
       </div>
-      <div className="grid gap-4 lg:grid-cols-3">
-        <ChartPanel title="Top Ban/Văn phòng">
-          {departmentCounts.slice(0, 6).map(([name, count], index) => (
-            <LeaderboardRow key={name} index={index + 1} name={name} value={count} max={Math.max(...departmentCounts.map(([, c]) => c), 1)} onClick={() => applyChartFilter("department", name, "stats")} />
-          ))}
-        </ChartPanel>
-        <ChartPanel title="Top cá nhân">
-          <div className="space-y-3">
-            {leaderBoard.map((person, index) => (
-              <button key={person.ten} className="flex w-full items-center gap-3 rounded-lg bg-[var(--mist)] p-3 text-left" onClick={() => applyChartFilter("author", person.ten, "stats")}>
-                <Avatar name={person.ten} index={index} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-black">{person.ten}</p>
-                  <p className="truncate text-xs font-semibold text-[var(--muted)]">{person.donVi}</p>
-                </div>
-                <span className="font-black">{person.soSangKien}</span>
-              </button>
-            ))}
-          </div>
-        </ChartPanel>
-        <ChartPanel title="Phase 2: điểm thưởng">
-          <div className="space-y-3">
-            {["Điểm thưởng", "Token/Coins", "Hội đồng đánh giá"].map((item) => (
-              <div key={item} className="flex items-center justify-between rounded-lg border border-[var(--line)] p-3">
-                <span className="font-black">{item}</span>
-                <Pill tone="gold">Phase 2</Pill>
-              </div>
-            ))}
-          </div>
-        </ChartPanel>
-      </div>
-      {isAuthed && (
-        <section className="mt-6">
-          <SectionTitle title="Sáng kiến tiêu biểu" />
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {awards.map((item) => (
-              <InitiativeCard key={item.id} item={item} canOpen={isAuthed} onOpen={openDetails} />
-            ))}
-          </div>
-        </section>
-      )}
-      <section className="mt-6">
-        <SectionTitle title="Top sáng kiến được quan tâm" />
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {topInitiatives.map((item) => (
-            <InitiativeCard key={item.id} item={item} canOpen={isAuthed} onOpen={openDetails} />
+      <section className="campaign-panel mb-6 rounded-xl p-5">
+        <PanelTitle>Bảng vinh danh Ban/Văn phòng</PanelTitle>
+        <div className="mt-5 grid items-end gap-3 sm:grid-cols-3">
+          {podium.map((dept, index) => (
+            <button
+              key={dept.ten}
+              className={`rounded-xl border border-[var(--line)] bg-white p-4 text-left transition hover:-translate-y-0.5 ${index === 0 ? "sm:order-2 sm:min-h-48" : index === 1 ? "sm:order-1 sm:min-h-40" : "sm:order-3 sm:min-h-36"}`}
+              onClick={() => applyChartFilter("department", dept.ten, "stats")}
+            >
+              <div className="grid h-10 w-10 place-items-center rounded-full text-lg font-black text-white" style={{ background: index === 0 ? "var(--gold-500)" : index === 1 ? "#9aa7b4" : "#c58a54" }}>{index + 1}</div>
+              <p className="mt-4 line-clamp-2 font-black">{dept.ten}</p>
+              <p className="mt-3 text-3xl font-black text-[var(--green-600)]">{metricOf(dept)}</p>
+              <p className="text-xs font-bold text-[var(--muted)]">{metricUnit}</p>
+              <p className="mt-2 text-xs font-semibold text-[var(--muted)]">{dept.soSangKien} sáng kiến · {compactNumber(dept.quanTam)} quan tâm</p>
+            </button>
           ))}
         </div>
       </section>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <ChartPanel title="Xếp hạng Ban/Văn phòng">
+          {departmentRanked.length > 3 ? (
+            <div className="space-y-1">
+              {departmentRanked.slice(3, 10).map((dept, index) => (
+                <RankRow key={dept.ten} rank={index + 4} name={dept.ten} value={metricOf(dept)} max={maxDeptMetric} sub={`${dept.soSangKien} SK · ${compactNumber(dept.quanTam)} QT`} onClick={() => applyChartFilter("department", dept.ten, "stats")} />
+              ))}
+            </div>
+          ) : (
+            <EmptyHint text="Chưa có đơn vị ngoài top 3." />
+          )}
+        </ChartPanel>
+        <ChartPanel title="Top cá nhân">
+          {authorRanked.length > 0 ? (
+            <div className="space-y-1">
+              {authorRanked.slice(0, 8).map((person, index) => (
+                <button key={person.ten} className="flex w-full items-center gap-3 rounded-lg p-2 text-left hover:bg-[var(--mist)]" onClick={() => applyChartFilter("author", person.ten, "stats")}>
+                  <Avatar name={person.ten} index={index} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-black">{person.ten}</p>
+                    <p className="truncate text-xs font-semibold text-[var(--muted)]">{person.donVi}</p>
+                  </div>
+                  <span className="shrink-0 text-right">
+                    <span className="block font-black">{metricOf(person)}</span>
+                    <span className="block text-[10px] font-semibold text-[var(--muted)]">{person.soSangKien} SK · {compactNumber(person.quanTam)} QT</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <EmptyHint text="Chưa có dữ liệu tác giả." />
+          )}
+        </ChartPanel>
+      </div>
+      <section className="mt-6">
+        <SectionTitle title="Top sáng kiến được quan tâm" />
+        {topInitiatives.length > 0 ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {topInitiatives.map((item) => (
+              <InitiativeCard key={item.id} item={item} canOpen={isAuthed} onOpen={openDetails} />
+            ))}
+          </div>
+        ) : (
+          <EmptyHint text="Chưa có sáng kiến được quan tâm." />
+        )}
+      </section>
         </>
+        )
       )}
       {activeTab === "data" && (
         <InsightsDataPanel
@@ -1877,11 +1900,11 @@ function GuidePage({
     ["Ai được gửi sáng kiến?", "Công đoàn viên và người lao động sử dụng tài khoản Tập đoàn trong prototype."],
     ["Có cần đăng nhập không?", "Có. Người chưa đăng nhập chỉ xem được landing page và thống kê cơ bản."],
     ["DOCX dùng để làm gì?", "DOCX mô phỏng mẫu chuẩn để in ấn, ký tá hoặc lưu hồ sơ khi cần."],
-    ["Sáng kiến được duyệt như thế nào?", "Prototype ghi trạng thái Chờ duyệt; luồng hội đồng đánh giá được để Phase 2."],
+    ["Sáng kiến được duyệt như thế nào?", "Prototype ghi trạng thái Chờ duyệt; luồng hội đồng đánh giá được để Giai đoạn 2."],
   ];
 
   return (
-    <PageFrame eyebrow="Hướng dẫn" title="Tham gia phong trào sáng kiến trong 3 bước" variant="campaign">
+    <PageFrame eyebrow="Hướng dẫn" title="Gửi sáng kiến trong 3 bước" variant="campaign" banner="guide">
       <div className="grid gap-4 md:grid-cols-3">
         {steps.map((step, index) => (
           <div key={step.title} className="note-card rounded-xl p-5">
@@ -1893,7 +1916,7 @@ function GuidePage({
       </div>
       <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_360px]">
         <div className="campaign-panel rounded-xl p-5">
-          <h3 className="text-xl font-black">Câu hỏi thường gặp</h3>
+          <PanelTitle>Câu hỏi thường gặp</PanelTitle>
           <div className="mt-4 divide-y divide-[var(--line)]">
             {faqs.map(([question, answer]) => (
               <details key={question} className="group py-4">
@@ -1905,7 +1928,7 @@ function GuidePage({
         </div>
         <div className="note-card rounded-xl p-5">
           <Bot className="h-9 w-9 text-[var(--blue-700)]" />
-          <h3 className="mt-4 text-xl font-black">Gợi ý với AI</h3>
+          <PanelTitle className="mt-4">Gợi ý với AI</PanelTitle>
           <div className="mt-4 grid gap-2">
             <button className="rounded-lg bg-white p-3 text-left text-sm font-black text-[var(--navy-900)]" onClick={isAuthed ? openChat : login}>
               Gợi ý cho tôi sáng kiến về tiết kiệm KHCN-ĐMST
@@ -1957,7 +1980,7 @@ function AdminPortal({
   const authors = new Set(items.map((item) => item.tacGia)).size;
 
   return (
-    <PageFrame eyebrow="Admin Portal" title="Kho dữ liệu Sáng kiến">
+    <PageFrame eyebrow="Admin Portal" title="Kho dữ liệu Sáng kiến" banner="guide">
       {notice && (
         <div className="mb-4 rounded-lg border border-[var(--line)] bg-[var(--mist)] px-4 py-3 text-sm font-bold text-[var(--navy-800)]">
           {notice}
@@ -1987,7 +2010,7 @@ function AdminPortal({
             <table className="w-full min-w-[980px] border-collapse text-left text-sm">
               <thead className="bg-[var(--navy-900)] text-white">
                 <tr>
-                  {["Tên sáng kiến", "Lĩnh vực", "Đơn vị", "Tác giả", "Trạng thái", "Quan tâm", "Điểm", "Giải thưởng", "Thao tác"].map((head) => (
+                  {["Tên sáng kiến", "Lĩnh vực", "Đơn vị", "Tác giả", "Trạng thái", "Quan tâm", "Ngày nộp", "Thao tác"].map((head) => (
                     <th key={head} className="px-4 py-3">{head}</th>
                   ))}
                 </tr>
@@ -2001,8 +2024,7 @@ function AdminPortal({
                     <td className="px-4 py-3">{item.tacGia}</td>
                     <td className="px-4 py-3"><StatusBadge status={item.trangThai} /></td>
                     <td className="px-4 py-3">{item.quanTam}</td>
-                    <td className="px-4 py-3">{item.diem}</td>
-                    <td className="px-4 py-3">{item.giaiThuong}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-[var(--muted)]">{item.ngayNop}</td>
                     <td className="px-4 py-3">
                       <div className="flex gap-2">
                         <button className="rounded-md bg-[var(--blue-100)] px-3 py-2 text-xs font-black text-[var(--blue-700)]" onClick={() => openDetails(item)}>Xem</button>
@@ -2028,7 +2050,7 @@ function AdminPortal({
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Pill field={item.linhVuc}>{item.linhVuc}</Pill>
                   <StatusBadge status={item.trangThai} />
-                  <Pill tone="gold">{item.giaiThuong}</Pill>
+                  <span className="text-xs font-semibold text-[var(--muted)]">{item.ngayNop}</span>
                 </div>
                 <div className="mt-4 grid grid-cols-2 gap-2">
                   <button className="rounded-md bg-[var(--blue-100)] px-3 py-2 text-xs font-black text-[var(--blue-700)]" onClick={() => openDetails(item)}>Xem chi tiết</button>
@@ -2080,10 +2102,73 @@ function FormField({
   );
 }
 
-function FormSectionHeader({ title }: { title: string }) {
+function FormPreviewModal({ form, onClose, onExport }: { form: FormState; onClose: () => void; onExport: () => void }) {
+  const fmt = (iso: string) => {
+    if (!iso) return "";
+    const [y, m, d] = iso.split("-");
+    return d && m && y ? `${d}/${m}/${y}` : iso;
+  };
+  const thoiGian = form.thoiGianTu && form.thoiGianDen
+    ? `${fmt(form.thoiGianTu)} - ${fmt(form.thoiGianDen)}`
+    : fmt(form.thoiGianTu) || fmt(form.thoiGianDen) || "—";
+  const authors = form.danhSachTacGia.filter((a) => a.hoTen.trim());
+  const blocks: { label: string; value: string }[] = [
+    { label: "1. Lý do đề xuất", value: form.lyDo },
+    { label: "2. Mục tiêu", value: form.mucTieu },
+    { label: "3. Thực trạng", value: form.thucTrang },
+    { label: "4. Giải pháp mới", value: form.giaiPhap },
+    { label: "5. Cách thức áp dụng", value: form.cachThuc },
+    { label: "6. Nội dung tóm tắt", value: form.tomTat },
+    { label: "7. Hiệu quả dự kiến", value: form.hieuQua },
+    { label: "8. Tính mới", value: form.tinhMoi },
+    { label: "9. Khả năng nhân rộng", value: form.nhanRong },
+  ];
   return (
-    <div className="border-y border-[var(--line)] bg-white px-5 py-5 sm:px-7">
-      <h3 className="text-xl font-black text-[var(--navy-900)]">{title}</h3>
+    <div className="detail-backdrop fixed inset-0 z-50 grid place-items-center bg-[var(--navy-950)]/45 p-4" onClick={onClose}>
+      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <header className="flex items-center justify-between gap-3 border-b border-[var(--line)] bg-[var(--navy-900)] px-5 py-3 text-white">
+          <PanelTitle className="text-white">Bản xem trước phiếu đăng ký</PanelTitle>
+          <button className="rounded-md p-1 hover:bg-white/10" onClick={onClose} aria-label="Đóng"><X className="h-5 w-5" /></button>
+        </header>
+        <div className="scrollbar-thin overflow-auto px-6 py-6 sm:px-10" style={{ fontFamily: "var(--font-campaign)" }}>
+          <p className="text-center text-sm font-black uppercase tracking-wide text-[var(--muted)]">Phiếu đăng ký sản phẩm sáng tạo</p>
+          <h2 className="mt-2 text-center text-2xl font-black text-[var(--navy-900)]">{form.ten || "(Chưa có tên sáng kiến)"}</h2>
+          <div className="mt-5 grid gap-2 border-y border-[var(--line)] py-4 text-sm text-[var(--navy-900)] sm:grid-cols-2">
+            <p><span className="font-black">Lĩnh vực:</span> {form.linhVuc}</p>
+            <p><span className="font-black">Đơn vị chủ trì:</span> {form.donVi || "—"}</p>
+            <p><span className="font-black">Thời gian:</span> {thoiGian}</p>
+            <p><span className="font-black">Email liên hệ:</span> {form.email || "—"}</p>
+          </div>
+          <div className="mt-4">
+            <p className="text-sm font-black text-[var(--navy-900)]">Tác giả / Đồng tác giả</p>
+            {authors.length > 0 ? (
+              <ol className="mt-1 list-decimal pl-6 text-sm text-[var(--navy-900)]">
+                {authors.map((a, i) => (
+                  <li key={i}>{a.hoTen}{a.chucVu ? ` — ${a.chucVu}` : ""}{a.donVi ? ` (${a.donVi})` : ""}</li>
+                ))}
+              </ol>
+            ) : <p className="mt-1 text-sm text-[var(--muted)]">(Chưa nhập tác giả)</p>}
+          </div>
+          {blocks.map((b) => (
+            <div key={b.label} className="mt-4">
+              <p className="text-sm font-black text-[var(--navy-900)]">{b.label}</p>
+              <p className="mt-1 whitespace-pre-line text-sm leading-6 text-[var(--navy-800)]">{b.value.trim() || "…"}</p>
+            </div>
+          ))}
+        </div>
+        <footer className="flex flex-wrap justify-end gap-2 border-t border-[var(--line)] px-5 py-4">
+          <button className="rounded-md border border-[var(--line)] bg-white px-4 py-2 text-sm font-black text-[var(--navy-800)]" onClick={onClose}>Đóng</button>
+          <button className="rounded-md bg-[var(--blue-700)] px-4 py-2 text-sm font-black text-white" onClick={onExport}>Tải file .docx</button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+function FormSectionHeader({ title, id }: { title: string; id?: string }) {
+  return (
+    <div id={id} className="scroll-mt-24 border-y border-[var(--line)] bg-white px-5 py-5 sm:px-7">
+      <PanelTitle>{title}</PanelTitle>
     </div>
   );
 }
@@ -2135,26 +2220,34 @@ function InitiativeForm({
 }) {
   const formSteps = [
     {
+      id: "sec-general",
       title: "Thông tin chung",
       done: Boolean(form.ten.trim() && form.email.trim() && form.donVi),
     },
     {
+      id: "sec-authors",
       title: "Thông tin tác giả",
       done: form.danhSachTacGia.every((author) => author.hoTen.trim()),
     },
     {
+      id: "sec-content",
       title: "Nội dung",
       done: Boolean(form.lyDo.trim() && form.mucTieu.trim() && form.giaiPhap.trim()),
     },
     {
+      id: "sec-impact",
       title: "Hiệu quả",
       done: Boolean(form.hieuQua.trim()),
     },
     {
+      id: "sec-submit",
       title: "Xuất/Gửi",
       done: formMessage.startsWith("Đã gửi") || formMessage.startsWith("Đã cập nhật") || formMessage.startsWith("Đã xuất"),
     },
   ];
+
+  const goToSection = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const contentFields: { key: keyof FormState; label: string; placeholder: string }[] = [
     { key: "lyDo", label: "Lý do đề xuất", placeholder: "Vấn đề, nhu cầu hoặc cơ hội cải tiến cần được giải quyết..." },
@@ -2174,21 +2267,27 @@ function InitiativeForm({
   return (
     <section>
       <form className="card overflow-hidden" onSubmit={submitInitiative}>
-        <div className="border-b border-[var(--line)] bg-white px-5 py-5 sm:px-7">
-          <h3 className="text-xl font-black text-[var(--navy-900)]">Thông tin chung</h3>
+        <div id="sec-general" className="scroll-mt-24 border-b border-[var(--line)] bg-white px-5 py-5 sm:px-7">
+          <PanelTitle>Thông tin chung</PanelTitle>
         </div>
 
         <div className="border-b border-[var(--line)] bg-[var(--mist)] px-5 py-4 sm:px-7">
           <div className="grid gap-2 sm:grid-cols-5">
             {formSteps.map((step, index) => (
-              <div key={step.title} className={`rounded-lg border px-3 py-3 ${step.done ? "border-[var(--green-500)] bg-white" : "border-[var(--line)] bg-white/65"}`}>
+              <button
+                type="button"
+                key={step.title}
+                onClick={() => goToSection(step.id)}
+                title={`Tới mục ${step.title}`}
+                className={`rounded-lg border px-3 py-3 text-left transition hover:border-[var(--green-500)] hover:bg-white ${step.done ? "border-[var(--green-500)] bg-white" : "border-[var(--line)] bg-white/65"}`}
+              >
                 <div className="flex items-center gap-2">
                   <span className={`grid h-6 w-6 place-items-center rounded-full text-xs font-black ${step.done ? "bg-[var(--green-600)] text-white" : "bg-[var(--blue-100)] text-[var(--blue-700)]"}`}>
                     {index + 1}
                   </span>
                   <span className="min-w-0 truncate text-xs font-black text-[var(--navy-900)]">{step.title}</span>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -2221,7 +2320,7 @@ function InitiativeForm({
           </label>
 
           <label className="block">
-            <span className="text-sm font-black text-[var(--navy-900)]">Đơn vị/Phòng ban</span>
+            <span className="text-sm font-black text-[var(--navy-900)]">Đơn vị/Phòng ban chủ trì</span>
             <select
               className="mt-2 w-full rounded-md border border-[var(--line)] bg-white px-4 py-3 text-base font-bold text-[var(--navy-800)] outline-none transition focus:border-[var(--green-600)] focus:ring-4 focus:ring-[var(--green-100)]"
               value={form.donVi}
@@ -2248,7 +2347,7 @@ function InitiativeForm({
           </label>
 
           <label className="block">
-            <span className="text-sm font-black text-[var(--navy-900)]">Thời gian bắt đầu</span>
+            <span className="text-sm font-black text-[var(--navy-900)]">Thời gian bắt đầu <span className="font-semibold text-[var(--muted)]">(ngày/tháng/năm)</span></span>
             <input
               className={`mt-2 ${inputClass(Boolean(fieldErrors.thoiGian))}`}
               value={form.thoiGianTu}
@@ -2258,7 +2357,7 @@ function InitiativeForm({
           </label>
 
           <label className="block">
-            <span className="text-sm font-black text-[var(--navy-900)]">Thời gian kết thúc</span>
+            <span className="text-sm font-black text-[var(--navy-900)]">Thời gian kết thúc <span className="font-semibold text-[var(--muted)]">(ngày/tháng/năm)</span></span>
             <input
               className={`mt-2 ${inputClass(Boolean(fieldErrors.thoiGian))}`}
               value={form.thoiGianDen}
@@ -2269,10 +2368,10 @@ function InitiativeForm({
           </label>
         </div>
 
-        <div className="border-y border-[var(--line)] bg-[var(--mist)] px-5 py-6 sm:px-7">
+        <div id="sec-authors" className="scroll-mt-24 border-y border-[var(--line)] bg-[var(--mist)] px-5 py-6 sm:px-7">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h3 className="text-xl font-black text-[var(--navy-900)]">Thông tin tác giả</h3>
+              <PanelTitle>Thông tin tác giả</PanelTitle>
               <p className="mt-1 text-sm font-semibold text-[var(--muted)]">Chọn cá nhân hoặc nhóm tác giả cho sáng kiến.</p>
             </div>
             <div className="inline-grid w-full grid-cols-2 rounded-lg border border-[var(--line)] bg-white p-1 sm:w-auto">
@@ -2315,7 +2414,7 @@ function InitiativeForm({
                     placeholder="Ví dụ: Chuyên viên"
                   />
                 </FormField>
-                <FormField label="Đơn vị">
+                <FormField label="Đơn vị công tác">
                   <select
                     className={`${inputClass(false)} font-bold text-[var(--navy-800)]`}
                     value={author.donVi}
@@ -2363,7 +2462,7 @@ function InitiativeForm({
           </div>
         </div>
 
-        <FormSectionHeader title="Nội dung" />
+        <FormSectionHeader title="Nội dung" id="sec-content" />
         <div className="grid gap-5 px-5 py-6 sm:px-7">
           {contentFields.map(({ key, label, placeholder }) => (
             <TextArea
@@ -2377,7 +2476,7 @@ function InitiativeForm({
           ))}
         </div>
 
-        <FormSectionHeader title="Hiệu quả" />
+        <FormSectionHeader title="Hiệu quả" id="sec-impact" />
         <div className="grid gap-5 px-5 py-6 sm:px-7">
           {effectivenessFields.map(({ key, label, placeholder }) => (
             <TextArea
@@ -2391,7 +2490,7 @@ function InitiativeForm({
           ))}
         </div>
 
-        <FormSectionHeader title="Xuất/Gửi" />
+        <FormSectionHeader title="Xuất/Gửi" id="sec-submit" />
         <div className="grid gap-5 px-5 py-6 sm:px-7">
           <div className="rounded-xl border border-[var(--line)] bg-[var(--mist)] p-4">
             <h4 className="text-sm font-black text-[var(--navy-900)]">Tệp đăng ký sáng kiến (bản cuối cùng)</h4>
@@ -2406,15 +2505,20 @@ function InitiativeForm({
               >
                 Xuất tệp đăng ký
               </button>
-              <input
-                className="block w-full text-sm font-semibold text-[var(--navy-800)] file:mr-4 file:rounded-md file:border-0 file:bg-[var(--green-600)] file:px-4 file:py-2 file:text-sm file:font-black file:text-white sm:w-auto sm:min-w-[280px] sm:flex-1"
-                type="file"
-                accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                onChange={(event) => {
-                  const file = event.target.files?.[0] ?? null;
-                  setFinalDocx(file);
-                }}
-              />
+              <label className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-md border border-[var(--line)] bg-white px-4 py-2 text-sm font-black text-[var(--navy-800)] transition hover:bg-[var(--mist)]">
+                <FileText className="h-4 w-4 text-[var(--green-600)]" />
+                Tải lên bản cuối (.docx)
+                <input
+                  className="hidden"
+                  type="file"
+                  accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    setFinalDocx(file);
+                  }}
+                />
+              </label>
+              {!finalDocxFile && <span className="text-sm font-semibold text-[var(--muted)]">Chưa chọn tệp</span>}
               {finalDocxFile && (
                 <div className="flex items-center gap-2 text-sm font-bold text-[var(--navy-800)]">
                   <span className="truncate">{finalDocxFile.name}</span>
@@ -2431,14 +2535,23 @@ function InitiativeForm({
             <FieldError message={fieldErrors.finalDocx} />
           </div>
 
-          {formMessage && (
-            <div className={`rounded-xl border p-4 text-sm font-bold ${formMessage.startsWith("Đã gửi") || formMessage.startsWith("Đã cập nhật") ? "border-[var(--green-500)] bg-[var(--green-100)] text-[var(--green-700)]" : "border-[var(--gold-500)] bg-[var(--gold-100)] text-[var(--navy-900)]"}`}>
-              <p>{formMessage}</p>
-              {(formMessage.startsWith("Đã gửi") || formMessage.startsWith("Đã cập nhật")) && (
-                <p className="mt-1 text-xs font-black text-[var(--navy-800)]">Hồ sơ đã được ghi nhận trong kho dữ liệu prototype.</p>
-              )}
-            </div>
-          )}
+          {formMessage && (() => {
+            const success = formMessage.startsWith("Đã gửi") || formMessage.startsWith("Đã cập nhật");
+            return (
+              <div className={`rounded-xl border p-4 text-sm font-bold ${success ? "border-[var(--green-500)] bg-[var(--green-100)] text-[var(--green-700)]" : "border-[var(--gold-500)] bg-[var(--gold-100)] text-[var(--navy-900)]"}`}>
+                <p className="flex items-center gap-2">{success && <ShieldCheck className="h-5 w-5" />}{formMessage}</p>
+                {success && (
+                  <>
+                    <p className="mt-1 text-xs font-black text-[var(--navy-800)]">Hồ sơ đã được ghi nhận. Bạn có thể tải bản Word hoặc xem lại trong danh sách sáng kiến.</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button type="button" className="rounded-md bg-[var(--blue-700)] px-4 py-2 text-xs font-black text-white" onClick={exportDocx}>Tải file .docx</button>
+                      <button type="button" className="rounded-md border border-[var(--green-600)] bg-white px-4 py-2 text-xs font-black text-[var(--green-700)]" onClick={backToList}>Về danh sách sáng kiến</button>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         <div className="sticky bottom-0 flex flex-col gap-3 border-t border-[var(--line)] bg-white/95 px-5 py-5 backdrop-blur sm:flex-row sm:justify-end sm:px-7">
@@ -2457,6 +2570,13 @@ function InitiativeForm({
             Về danh sách
           </button>
           <button
+            className="rounded-md border border-[var(--navy-900)] bg-white px-5 py-3 text-sm font-black text-[var(--navy-900)]"
+            type="button"
+            onClick={() => setPreviewOpen(true)}
+          >
+            Xem bản xem trước
+          </button>
+          <button
             className="rounded-md bg-[var(--green-600)] px-5 py-3 text-sm font-black text-white shadow-md shadow-[var(--green-600)]/20"
             type="submit"
           >
@@ -2464,6 +2584,7 @@ function InitiativeForm({
           </button>
         </div>
       </form>
+      {previewOpen && <FormPreviewModal form={form} onClose={() => setPreviewOpen(false)} onExport={exportDocx} />}
     </section>
   );
 }
@@ -2543,7 +2664,6 @@ function InitiativeCard({
       <div className="p-4">
         <div className="mb-3 flex flex-wrap gap-2">
           <StatusBadge status={item.trangThai} />
-          {item.giaiThuong !== "Chờ xét chọn" && <Pill tone="gold">{item.giaiThuong}</Pill>}
         </div>
         <button className="text-left" onClick={() => onOpen(item)} aria-label={`Xem chi tiết sáng kiến ${item.ten}`}>
           <h3 className="line-clamp-2 text-base font-black leading-6 text-[var(--navy-900)]">{item.ten}</h3>
@@ -2591,7 +2711,6 @@ function DetailDrawer({
               <div className="mb-3 flex flex-wrap gap-2">
                 <Pill field={item.linhVuc}>{item.linhVuc}</Pill>
                 <StatusBadge status={item.trangThai} />
-                {item.giaiThuong !== "Chờ xét chọn" && <Pill tone="gold">{item.giaiThuong}</Pill>}
               </div>
               <h3 className="text-balance text-2xl font-black leading-tight sm:text-3xl">{item.ten}</h3>
               <p className="mt-2 text-sm font-bold text-[var(--muted)]">
@@ -2639,6 +2758,7 @@ function Chatbot({
   open,
   setOpen,
   messages,
+  thinking,
   input,
   setInput,
   send,
@@ -2647,6 +2767,7 @@ function Chatbot({
   open: boolean;
   setOpen: (value: boolean) => void;
   messages: ChatMessage[];
+  thinking: boolean;
   input: string;
   setInput: (value: string) => void;
   send: (text: string) => void;
@@ -2661,7 +2782,7 @@ function Chatbot({
     <div className="fixed inset-x-0 bottom-0 z-40 px-3 pb-3 sm:inset-auto sm:bottom-5 sm:right-5 sm:px-0 sm:pb-0">
       {open && (
         <section
-          className="chat-panel card mb-3 flex h-[min(720px,calc(100vh-5rem))] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:h-[min(620px,calc(100vh-7rem))] sm:w-[430px] sm:rounded-xl"
+          className="chat-panel mb-3 flex h-[min(720px,calc(100vh-5rem))] w-full flex-col overflow-hidden rounded-t-2xl border border-[var(--line)] bg-white shadow-2xl sm:h-[min(620px,calc(100vh-7rem))] sm:w-[430px] sm:rounded-xl"
           role="dialog"
           aria-label="Trợ lý AI Sáng kiến"
         >
@@ -2669,17 +2790,17 @@ function Chatbot({
             <h3 className="font-black">Trợ lý AI Sáng kiến</h3>
             <p className="text-xs text-white/70">Gợi ý dựa trên dữ liệu sáng kiến đã cập nhật</p>
           </header>
-          <div className="scrollbar-thin flex-1 space-y-3 overflow-auto p-4">
+          <div className="scrollbar-thin flex-1 space-y-3 overflow-auto bg-[var(--mist)]/60 p-4">
             <div className="flex flex-wrap gap-2">
               {prompts.map((prompt) => (
-                <button key={prompt} className="rounded-md bg-[var(--green-100)] px-3 py-2 text-left text-xs font-bold text-[var(--green-700)]" onClick={() => send(prompt)}>
+                <button key={prompt} className="rounded-full border border-[var(--green-600)]/25 bg-white px-3 py-2 text-left text-xs font-bold text-[var(--green-700)] shadow-sm" onClick={() => send(prompt)}>
                   {prompt}
                 </button>
               ))}
             </div>
             {messages.map((message, index) => (
-              <div key={index} className={`rounded-lg p-3 text-sm leading-6 ${message.from === "bot" ? "bg-[var(--mist)] text-[var(--navy-800)]" : "ml-8 bg-[var(--green-600)] text-white"}`}>
-                <p>{message.text}</p>
+              <div key={index} className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-sm leading-6 ${message.from === "bot" ? "mr-auto border border-[var(--line)] bg-white text-[var(--navy-800)] shadow-sm" : "ml-auto bg-[var(--green-600)] text-white"}`}>
+                <p className="whitespace-pre-line">{message.text}</p>
                 {message.suggestions && (
                   <div className="mt-3 grid gap-3">
                     {message.suggestions.map((suggestion) => (
@@ -2706,6 +2827,13 @@ function Chatbot({
                 )}
               </div>
             ))}
+            {thinking && (
+              <div className="mr-auto flex max-w-[88%] items-center gap-1.5 rounded-2xl border border-[var(--line)] bg-white px-4 py-3 shadow-sm" aria-label="Trợ lý đang soạn">
+                <span className="h-2 w-2 animate-bounce rounded-full bg-[var(--muted)] [animation-delay:0ms]" />
+                <span className="h-2 w-2 animate-bounce rounded-full bg-[var(--muted)] [animation-delay:150ms]" />
+                <span className="h-2 w-2 animate-bounce rounded-full bg-[var(--muted)] [animation-delay:300ms]" />
+              </div>
+            )}
           </div>
           <form className="flex gap-2 border-t border-[var(--line)] p-3" onSubmit={(event) => { event.preventDefault(); send(input); }}>
             <input className="min-w-0 flex-1 rounded-md border border-[var(--line)] px-3 py-2 text-sm outline-none focus:border-[var(--green-600)]" value={input} onChange={(event) => setInput(event.target.value)} placeholder="Nhập câu hỏi..." />
@@ -2729,16 +2857,31 @@ function PageFrame({
   title,
   children,
   variant = "default",
+  banner = "guide",
 }: {
   eyebrow: string;
   title: string;
   children: React.ReactNode;
   variant?: "default" | "campaign";
+  banner?: "competition" | "guide";
 }) {
+  const bannerImage = banner === "competition" ? visualAssets.bannerCompetition : visualAssets.bannerGuideForm;
   return (
-    <section className={`app-container pb-8 pt-24 lg:pb-12 lg:pt-28 ${variant === "campaign" ? "relative" : ""}`}>
-      <SectionTitle eyebrow={eyebrow} title={title} />
-      {children}
+    <section className={`page-frame ${variant === "campaign" ? "page-frame-campaign" : ""}`} aria-label={eyebrow}>
+      <div className="page-banner relative overflow-hidden">
+        <img src={bannerImage} alt="" className="page-banner-image absolute inset-0 h-full w-full object-cover" />
+        <div className="page-banner-overlay absolute inset-0" />
+        <div className="app-container relative z-10 flex min-h-[360px] items-center pb-10 pt-28 lg:min-h-[460px] lg:pb-14 lg:pt-32">
+          <div className="page-hero-title">
+            <h1 className="campaign-title page-hero-heading text-balance leading-[0.98] text-[var(--ink)]">
+              {title}
+            </h1>
+          </div>
+        </div>
+      </div>
+      <div className="app-container page-frame-content pb-8 pt-6 lg:pb-12 lg:pt-8">
+        {children}
+      </div>
     </section>
   );
 }
@@ -2747,28 +2890,32 @@ function SectionTitle({
   eyebrow,
   title,
   icon: Icon = Sparkles,
-  tone = "default",
 }: {
   eyebrow?: string;
   title: string;
   icon?: LucideIcon;
-  tone?: "default" | "campaign";
 }) {
   return (
     <div className="mb-5 flex items-center gap-3">
       {eyebrow ? (
         <div>
-          <p className="text-xs font-black uppercase text-[var(--green-600)]">{eyebrow}</p>
-          <h2 className={`mt-1 text-2xl font-black leading-tight text-[var(--navy-900)] sm:text-3xl ${tone === "campaign" ? "campaign-subtitle" : ""}`}>{title}</h2>
+          <p className="text-xs font-black uppercase tracking-wide text-[var(--green-600)]">{eyebrow}</p>
+          <h2 className="campaign-subtitle mt-1 text-2xl leading-tight text-[var(--navy-900)] sm:text-3xl">{title}</h2>
         </div>
       ) : (
         <>
-          <h2 className={`text-2xl font-black leading-tight text-[var(--navy-900)] ${tone === "campaign" ? "campaign-subtitle" : ""}`}>{title}</h2>
+          <h2 className="campaign-subtitle text-2xl leading-tight text-[var(--navy-900)] sm:text-3xl">{title}</h2>
           <Icon className="h-5 w-5 text-[var(--green-600)]" />
         </>
       )}
     </div>
   );
+}
+
+// Tiêu đề panel/chart: luôn dùng Inter, cùng 1 size (18px) để đồng bộ toàn app.
+// Không dùng chữ bay bổng ở cấp này — chữ bay bổng chỉ dành cho SectionTitle/PageTitle.
+function PanelTitle({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <h3 className={`text-lg font-extrabold leading-tight text-[var(--navy-900)] ${className}`}>{children}</h3>;
 }
 
 function StatTile({ icon: Icon, value, label, caption, color, card = false }: { icon: LucideIcon; value: string; label: string; caption: string; color: string; card?: boolean }) {
@@ -2790,11 +2937,80 @@ function ChartPanel({ title, children, action, className = "" }: { title: string
   return (
     <section className={`card rounded-xl p-4 ${className}`}>
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h3 className="font-black">{title}</h3>
+        <PanelTitle>{title}</PanelTitle>
         {action && <button className="text-xs font-black text-[var(--blue-700)]" onClick={action}>Xem tất cả</button>}
       </div>
       {children}
     </section>
+  );
+}
+
+function MetricToggle({ metric, onChange }: { metric: "count" | "interest"; onChange: (m: "count" | "interest") => void }) {
+  const options: { id: "count" | "interest"; label: string }[] = [
+    { id: "count", label: "Số sáng kiến" },
+    { id: "interest", label: "Lượt quan tâm" },
+  ];
+  return (
+    <div className="inline-flex rounded-lg border border-[var(--line)] bg-white p-1 text-sm font-black">
+      {options.map((opt) => (
+        <button
+          key={opt.id}
+          onClick={() => onChange(opt.id)}
+          aria-pressed={metric === opt.id}
+          className={`rounded-md px-3 py-1.5 transition ${metric === opt.id ? "bg-[var(--navy-900)] text-white" : "text-[var(--navy-800)] hover:bg-[var(--mist)]"}`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function RankRow({ rank, name, value, max, sub, onClick }: { rank: number; name: string; value: number; max: number; sub?: string; onClick?: () => void }) {
+  return (
+    <button className="w-full rounded-lg p-2 text-left hover:bg-[var(--mist)]" onClick={onClick}>
+      <div className="flex items-center gap-3">
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[var(--mist)] text-xs font-black text-[var(--navy-800)]">{rank}</span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-black text-[var(--navy-900)]">{name}</p>
+          <div className="mt-1 h-1.5 rounded-full bg-[var(--mist)]">
+            <div className="h-full rounded-full bg-[var(--green-500)]" style={{ width: `${Math.round((value / max) * 100)}%` }} />
+          </div>
+        </div>
+        <span className="shrink-0 text-right">
+          <span className="block font-black">{value}</span>
+          {sub && <span className="block text-[10px] font-semibold text-[var(--muted)]">{sub}</span>}
+        </span>
+      </div>
+    </button>
+  );
+}
+
+function EmptyHint({ text }: { text: string }) {
+  return (
+    <div className="empty-hint rounded-lg border border-dashed border-[var(--line)] px-4 py-5 text-center">
+      <img src={visualAssets.empty} alt="" className="mx-auto mb-2 h-16 w-20 object-contain opacity-90" />
+      <p className="text-sm font-semibold text-[var(--muted)]">{text}</p>
+    </div>
+  );
+}
+
+function EmptyState({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="card empty-state grid place-items-center gap-2 rounded-xl px-6 py-12 text-center">
+      <img src={visualAssets.empty} alt="" className="h-32 w-44 object-contain" />
+      <p className="text-lg font-black text-[var(--navy-900)]">{title}</p>
+      <p className="max-w-md text-sm font-semibold text-[var(--muted)]">{text}</p>
+    </div>
+  );
+}
+
+function LoadingState({ label }: { label: string }) {
+  return (
+    <div className="card grid place-items-center gap-3 rounded-xl px-6 py-14 text-center">
+      <span className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--line)] border-t-[var(--green-600)]" />
+      <p className="text-sm font-semibold text-[var(--muted)]">{label}</p>
+    </div>
   );
 }
 
@@ -2813,7 +3029,10 @@ function LeaderboardRow({ index, name, value, max, active = false, onClick }: { 
   );
 }
 
-function WordCloud({ selectedField, onSelect }: { selectedField?: string; onSelect?: (field: Field) => void }) {
+function WordCloud({ total = 1, selectedField, onSelect }: { total?: number; selectedField?: string; onSelect?: (field: Field) => void }) {
+  if (total === 0) {
+    return <EmptyHint text="Chưa có chủ đề nổi bật." />;
+  }
   const words: { label: string; field: Field }[] = [
     { label: "Chuyển đổi số", field: "Công nghệ" },
     { label: "Tiết kiệm năng lượng", field: "Môi trường" },
@@ -2871,6 +3090,9 @@ function DonutChart({
     { current: 0, segments: [] as string[] },
   );
   const gradientSegments = segments.join(", ");
+  if (total === 0) {
+    return <EmptyHint text="Chưa có dữ liệu lĩnh vực." />;
+  }
   return (
     <div>
       <button
@@ -2998,7 +3220,7 @@ function AuthGatePanel({ title, description, action, onAction }: { title: string
     <div className="card grid gap-4 rounded-xl p-6 md:grid-cols-[1fr_auto] md:items-center">
       <div>
         <Lock className="h-8 w-8 text-[var(--green-600)]" />
-        <h3 className="mt-3 text-xl font-black">{title}</h3>
+        <PanelTitle className="mt-3">{title}</PanelTitle>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{description}</p>
       </div>
       <button className="rounded-md bg-[var(--green-600)] px-5 py-3 text-sm font-black text-white" onClick={onAction}>{action}</button>
@@ -3008,11 +3230,18 @@ function AuthGatePanel({ title, description, action, onAction }: { title: string
 
 function Select({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: readonly string[] }) {
   return (
-    <label>
+    <label className="block">
       <span className="text-xs font-black uppercase text-[var(--muted)]">{label}</span>
-      <select className="mt-2 w-full rounded-md border border-[var(--line)] bg-white px-3 py-2 text-sm font-bold outline-none focus:border-[var(--green-600)]" value={value} onChange={(event) => onChange(event.target.value)}>
-        {options.map((option) => <option key={option}>{option}</option>)}
-      </select>
+      <div className="relative mt-2">
+        <select
+          className="w-full appearance-none rounded-md border border-[var(--line)] bg-white px-3 py-2 pr-9 text-sm font-bold outline-none focus:border-[var(--green-600)] focus:ring-2 focus:ring-[var(--green-600)]/20"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        >
+          {options.map((option) => <option key={option}>{option}</option>)}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
+      </div>
     </label>
   );
 }
@@ -3104,25 +3333,49 @@ function AdminInsight({ icon: Icon, title, text, phase2 = false }: { icon: Lucid
     <div className="card rounded-xl p-5">
       <Icon className="h-8 w-8 text-[var(--green-600)]" />
       <div className="mt-3 flex items-center gap-2">
-        <h3 className="font-black">{title}</h3>
-        {phase2 && <Pill tone="gold">Phase 2</Pill>}
+        <PanelTitle>{title}</PanelTitle>
+        {phase2 && <Pill tone="gold">Giai đoạn 2</Pill>}
       </div>
       <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{text}</p>
     </div>
   );
 }
 
-function HonorFooter() {
+function HonorStories() {
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+
+  function scrollStories(direction: -1 | 1) {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    scroller.scrollBy({
+      left: direction * Math.min(520, scroller.clientWidth * 0.82),
+      behavior: "smooth",
+    });
+  }
+
   return (
-    <footer className="mt-8 px-4 pb-12 pt-4 sm:px-6">
-      <div className="campaign-panel mx-auto max-w-7xl rounded-2xl p-5 sm:p-7">
-        <p className="text-xs font-black uppercase text-[var(--green-600)]">Người thắp lửa đổi mới</p>
-        <h2 className="campaign-subtitle mt-2 text-3xl font-black leading-tight text-[var(--navy-900)]">Những câu chuyện tạo động lực thi đua.</h2>
-        <div className="mt-6 grid gap-4 md:grid-cols-3">
+    <section className="app-container pb-7 pt-2 lg:pb-9 lg:pt-3">
+      <div className="mb-5 flex items-end justify-between gap-4">
+        <h2 className="campaign-subtitle text-2xl leading-tight text-[var(--navy-900)] sm:text-3xl">Những câu chuyện tạo động lực thi đua.</h2>
+        <div className="flex shrink-0 gap-2" aria-label="Điều hướng câu chuyện">
+          <button className="carousel-arrow" onClick={() => scrollStories(-1)} aria-label="Cuộn sang trái">
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+          <button className="carousel-arrow" onClick={() => scrollStories(1)} aria-label="Cuộn sang phải">
+            <ChevronRight className="h-5 w-5" />
+          </button>
+        </div>
+      </div>
+      <div className="campaign-panel overflow-hidden rounded-xl p-5 sm:p-6">
+        <div ref={scrollerRef} className="honor-carousel flex gap-4 overflow-x-auto scroll-smooth pb-1">
           {innovators.map((person) => (
-            <article key={person.ten} className="grid gap-4 rounded-xl border border-[var(--line)] bg-white p-4 shadow-sm sm:grid-cols-[92px_1fr] sm:items-center">
-              <div className="honor-avatar" aria-hidden="true">
-                <span>{person.ten.split(" ").slice(-2).map((part) => part[0]).join("")}</span>
+            <article key={person.ten} className="honor-story-card grid shrink-0 gap-4 rounded-xl border border-[var(--line)] bg-white p-4 shadow-sm sm:grid-cols-[92px_1fr] sm:items-center">
+              <div className="honor-avatar">
+                {person.image ? (
+                  <img src={person.image} alt={`Chân dung minh hoạ ${person.ten}`} className="h-full w-full object-cover" />
+                ) : (
+                  <span>{person.ten.split(" ").slice(-2).map((part) => part[0]).join("")}</span>
+                )}
               </div>
               <div>
                 <p className="font-black text-[var(--navy-900)]">{person.ten}</p>
@@ -3131,6 +3384,41 @@ function HonorFooter() {
               </div>
             </article>
           ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SiteFooter() {
+  return (
+    <footer className="site-footer text-[var(--navy-900)]">
+      <div className="site-footer-inner app-container">
+        <div className="grid gap-8 md:grid-cols-2 xl:grid-cols-[1.18fr_1fr_1fr] xl:items-start">
+          <div className="flex gap-4">
+            <img src="/logo-pvn.png" alt="Petrovietnam" className="mt-1 h-11 w-auto shrink-0 object-contain" />
+            <div>
+              <p className="site-footer-kicker">Petrovietnam</p>
+              <h2 className="mt-2 max-w-xl text-base font-black uppercase leading-6 text-[var(--navy-900)]">
+                Tập đoàn Công nghiệp - Năng lượng Quốc gia Việt Nam
+              </h2>
+              <p className="mt-2 max-w-xl text-sm font-bold leading-6 text-[var(--muted)]">
+                Cùng lan tỏa sáng kiến xanh - số vì một môi trường làm việc đổi mới và bền vững.
+              </p>
+            </div>
+          </div>
+          <address className="not-italic text-sm leading-7 text-[var(--navy-800)]">
+            <p className="font-black text-[var(--navy-900)]">Thông tin liên hệ</p>
+            <p className="mt-2 max-w-md">Số 18 phố Láng Hạ, Phường Giảng Võ, Quận Ba Đình, Thành phố Hà Nội</p>
+            <p className="mt-2">Điện thoại: <a className="site-footer-link" href="tel:+842438252526">(024) 3825 2526</a></p>
+            <p>Fax: (024) 3826 5945</p>
+          </address>
+          <div className="text-sm leading-7 text-[var(--navy-800)] md:col-span-2 xl:col-span-1">
+            <p className="font-black text-[var(--navy-900)]">Kênh số</p>
+            <p className="mt-2">Email: <a className="site-footer-link" href="mailto:info@pvn.vn">info@pvn.vn</a></p>
+            <p>Website: <a className="site-footer-link" href="https://www.pvn.vn" target="_blank" rel="noreferrer">Petrovietnam</a></p>
+            <p>Fanpage: <a className="site-footer-link break-all" href="https://www.facebook.com/petrovietnamgroup/" target="_blank" rel="noreferrer">facebook.com/petrovietnamgroup</a></p>
+          </div>
         </div>
       </div>
     </footer>

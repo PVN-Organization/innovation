@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="Chân dung minh hoạ">
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e8f5f8"/>
+      <stop offset="1" stop-color="#e6f5ec"/>
+    </linearGradient>
+  </defs>
+  <rect width="200" height="200" fill="url(#bg2)"/>
+  <circle cx="30" cy="40" r="3" fill="#078c3b" opacity="0.30"/>
+  <circle cx="170" cy="34" r="3" fill="#1dbed6" opacity="0.35"/>
+  <circle cx="40" cy="22" r="2" fill="#1dbed6" opacity="0.30"/>
+  <!-- hair back (shoulder-length, dark) -->
+  <path d="M52 96 Q52 52 100 52 Q148 52 148 96 L150 168 Q126 150 118 158 L82 158 Q74 150 50 168 Z" fill="#2a211c"/>
+  <!-- shoulders / blazer (navy) with green blouse -->
+  <path d="M28 200 L28 180 Q28 152 64 147 Q100 141 136 147 Q172 152 172 180 L172 200 Z" fill="#102b55"/>
+  <path d="M100 148 L86 200 L114 200 Z" fill="#19a957"/>
+  <!-- neck -->
+  <rect x="89" y="120" width="22" height="28" rx="11" fill="#eac09a"/>
+  <!-- face -->
+  <circle cx="100" cy="92" r="40" fill="#f4d3b0"/>
+  <!-- ears -->
+  <circle cx="61" cy="94" r="6.5" fill="#f4d3b0"/>
+  <circle cx="139" cy="94" r="6.5" fill="#f4d3b0"/>
+  <!-- hair front / side framing -->
+  <path d="M60 92 Q58 54 100 54 Q142 54 140 92 Q138 74 122 66 L120 96 Q116 70 100 70 Q84 70 80 96 L78 66 Q62 74 60 92 Z" fill="#2a211c"/>
+  <!-- eyebrows -->
+  <path d="M79 86 Q86 82 93 86" stroke="#3a2f28" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <path d="M107 86 Q114 82 121 86" stroke="#3a2f28" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <!-- eyes -->
+  <circle cx="86" cy="95" r="3.4" fill="#071c3a"/>
+  <circle cx="114" cy="95" r="3.4" fill="#071c3a"/>
+  <!-- smile -->
+  <path d="M88 110 Q100 119 112 110" stroke="#cf9370" stroke-width="3" fill="none" stroke-linecap="round"/>
+</svg>
