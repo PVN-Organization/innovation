@@ -1,4 +1,20 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
+function resolveApiBase(): string {
+  const configured = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
+  if (typeof window === "undefined") return configured;
+  if (!configured) return "";
+
+  try {
+    const configuredOrigin = new URL(configured).origin;
+    // Production qua Caddy: API luôn ở /api trên cùng origin với frontend.
+    if (configuredOrigin !== window.location.origin) return "";
+  } catch {
+    return configured.startsWith("/") ? configured : "";
+  }
+
+  return configured;
+}
+
+const API_BASE = resolveApiBase();
 
 export { API_BASE };
 

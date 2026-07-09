@@ -19,7 +19,8 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-ARG NEXT_PUBLIC_API_URL=http://localhost:8000
+# Empty = relative /api via reverse proxy (Caddy). Do not default to localhost in production.
+ARG NEXT_PUBLIC_API_URL=
 ARG NEXT_PUBLIC_BYPASS_AUTH_TEMP=true
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 ENV NEXT_PUBLIC_BYPASS_AUTH_TEMP=${NEXT_PUBLIC_BYPASS_AUTH_TEMP}
