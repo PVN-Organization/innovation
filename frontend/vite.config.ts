@@ -49,6 +49,11 @@ export default defineConfig({
         target: backendTarget,
         changeOrigin: true,
       },
+      "/sang-kien/api": {
+        target: backendTarget,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/sang-kien/, ""),
+      },
     },
   },
 });

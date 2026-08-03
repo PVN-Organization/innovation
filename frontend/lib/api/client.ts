@@ -1,22 +1,34 @@
 function resolveApiBase(): string {
+  const basePath = (process.env.NEXT_PUBLIC_BASE_PATH ?? "").replace(/\/$/, "");
   const configured = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
-  if (typeof window === "undefined") return configured;
-  if (!configured) return "";
+
+  if (typeof window === "undefined") {
+    return configured || basePath;
+  }
+
+  if (!configured) return basePath;
 
   try {
     const configuredOrigin = new URL(configured).origin;
-    // Production qua Caddy: API luôn ở /api trên cùng origin với frontend.
-    if (configuredOrigin !== window.location.origin) return "";
+    // Same-origin reverse proxy: use basePath so API is /sang-kien/api/...
+    if (configuredOrigin !== window.location.origin) return basePath;
   } catch {
-    return configured.startsWith("/") ? configured : "";
+    return configured.startsWith("/") ? configured : basePath;
   }
 
-  return configured;
+  return configured || basePath;
 }
 
 const API_BASE = resolveApiBase();
+const BASE_PATH = (process.env.NEXT_PUBLIC_BASE_PATH ?? "").replace(/\/$/, "");
 
-export { API_BASE };
+/** Prefix public assets for Next basePath deployments. */
+export function assetPath(path: string): string {
+  if (!path.startsWith("/")) return `${BASE_PATH}/${path}`;
+  return `${BASE_PATH}${path}`;
+}
+
+export { API_BASE, BASE_PATH };
 
 export class ApiError extends Error {
   status: number;

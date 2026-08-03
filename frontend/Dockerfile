@@ -19,10 +19,12 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Empty = relative /api via reverse proxy (Caddy). Do not default to localhost in production.
+# Empty = relative /api via reverse proxy. basePath for portal.pvn.vn/sang-kien.
 ARG NEXT_PUBLIC_API_URL=
-ARG NEXT_PUBLIC_BYPASS_AUTH_TEMP=true
+ARG NEXT_PUBLIC_BASE_PATH=/sang-kien
+ARG NEXT_PUBLIC_BYPASS_AUTH_TEMP=false
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_BASE_PATH=${NEXT_PUBLIC_BASE_PATH}
 ENV NEXT_PUBLIC_BYPASS_AUTH_TEMP=${NEXT_PUBLIC_BYPASS_AUTH_TEMP}
 
 ENV NEXT_TELEMETRY_DISABLED=1

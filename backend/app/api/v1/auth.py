@@ -25,7 +25,9 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
 def _build_redirect_uri(request: Request) -> str:
-    """Build the OAuth2 callback URI from the current request."""
+    """Prefer configured redirect URI; fall back to request-derived URL."""
+    if settings.AZURE_AD_REDIRECT_URI:
+        return settings.AZURE_AD_REDIRECT_URI
     return str(request.url_for("auth_callback"))
 
 
@@ -118,7 +120,7 @@ async def auth_callback(
         httponly=True,
         samesite="lax",
         secure=settings.COOKIE_SECURE,
-        path="/",
+        path=settings.COOKIE_PATH,
     )
     return response
 
@@ -143,6 +145,6 @@ async def auth_logout() -> JSONResponse:
     response = JSONResponse(content={"detail": "Logged out"})
     response.delete_cookie(
         key=SESSION_COOKIE,
-        path="/",
+        path=settings.COOKIE_PATH,
     )
     return response

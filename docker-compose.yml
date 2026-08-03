@@ -1,23 +1,14 @@
-services:
-  # ── PostgreSQL (internal only — backend connects via postgres:5432) ─
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-innovation}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-innovation}
-      POSTGRES_DB: ${POSTGRES_DB:-innovation_db}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-innovation} -d $${POSTGRES_DB:-innovation_db}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+# Production / on-premise: external PostgreSQL (and later external MinIO on DB host).
+# Temp MinIO stays in compose until MinIO on 10.1.8.101 is ready — use profile "temp-minio".
+#
+# Usage:
+#   docker compose --profile temp-minio up -d
+#   # After external MinIO is ready, drop the profile and set MINIO_ENDPOINT in .env
 
-  # ── MinIO (internal only — backend connects via minio:9000) ───────
+services:
+  # ── MinIO (TEMPORARY — remove when MinIO runs on DB host) ─────────
   minio:
+    profiles: ["temp-minio"]
     image: minio/minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
@@ -38,27 +29,24 @@ services:
     build: ./backend
     restart: unless-stopped
     environment:
-      POSTGRES_ASYNC_URL: "postgresql+psycopg://${POSTGRES_USER:-innovation}:${POSTGRES_PASSWORD:-innovation}@postgres:5432/${POSTGRES_DB:-innovation_db}"
-      MINIO_ENDPOINT: "http://minio:9000"
+      POSTGRES_ASYNC_URL: ${POSTGRES_ASYNC_URL}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-http://minio:9000}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
       MINIO_BUCKET_NAME: ${MINIO_BUCKET_NAME:-innovations}
       AZURE_AD_CLIENT_ID: ${AZURE_AD_CLIENT_ID:-}
       AZURE_AD_TENANT_ID: ${AZURE_AD_TENANT_ID:-}
       AZURE_AD_CLIENT_SECRET: ${AZURE_AD_CLIENT_SECRET:-}
+      AZURE_AD_REDIRECT_URI: ${AZURE_AD_REDIRECT_URI:-}
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
-      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-["http://localhost:10003","http://localhost:3000"]}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:10003}
-      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-["https://portal.pvn.vn"]}
+      FRONTEND_URL: ${FRONTEND_URL:-https://portal.pvn.vn/sang-kien}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      COOKIE_PATH: ${COOKIE_PATH:-/sang-kien}
       DEBUG: ${DEBUG:-false}
-      BYPASS_AUTH_TEMP: ${BYPASS_AUTH_TEMP:-true}
+      BYPASS_AUTH_TEMP: ${BYPASS_AUTH_TEMP:-false}
     ports:
       - "${BACKEND_HOST_PORT:-10004}:8000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
@@ -66,13 +54,14 @@ services:
       retries: 3
       start_period: 40s
 
-  # ── Next.js Frontend ──────────────────────────────────────────────
+  # ── Next.js Frontend (basePath /sang-kien) ────────────────────────
   frontend:
     build:
       context: ./frontend
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
-        NEXT_PUBLIC_BYPASS_AUTH_TEMP: ${NEXT_PUBLIC_BYPASS_AUTH_TEMP:-true}
+        NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:-/sang-kien}
+        NEXT_PUBLIC_BYPASS_AUTH_TEMP: ${NEXT_PUBLIC_BYPASS_AUTH_TEMP:-false}
     restart: unless-stopped
     cap_add:
       - NET_BIND_SERVICE
@@ -83,7 +72,6 @@ services:
         condition: service_healthy
 
 volumes:
-  pgdata:
   miniodata:
 
 networks:

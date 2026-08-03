@@ -13,6 +13,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useInitiativeForm, DEPARTMENTS } from "@/hooks/useInitiativeForm";
 import type { AuthorMode, FormFieldErrors, InitiativeFormStep, DocxExportStatus } from "@/hooks/useInitiativeForm";
 import { useInitiatives } from "@/hooks/useInitiatives";
+import { assetPath } from "@/lib/api/client";
 import { BYPASS_AUTH_TEMP } from "@/lib/auth-bypass";
 import type { AuthorEntry, Field, FormState, Initiative, Status } from "@/lib/types";
 
@@ -124,42 +125,42 @@ const Lock: LucideIcon = (props) => (
 const fields: Field[] = ["Công nghệ", "Quy trình", "An toàn", "Môi trường", "Khác"];
 const statuses = ["Tất cả", "Chờ duyệt", "Đã duyệt"];
 const visualAssets = {
-  hero: "/visuals/hero-watercolor.png",
-  footer: "/visuals/footer-watercolor.png",
-  empty: "/visuals/empty-initiative.png",
-  aiIcon: "/visuals/icon-ai.png",
-  metricLightbulb: "/visuals/icon-metric-lightbulb.png",
-  metricHeart: "/visuals/icon-metric-heart.png",
-  metricTrophy: "/visuals/icon-metric-trophy.png",
-  metricPeople: "/visuals/icon-metric-people.png",
-  bannerCompetition: "/visuals/banner-competition.png",
-  bannerGuideForm: "/visuals/banner-guide-form.png",
+  hero: assetPath("/visuals/hero-watercolor.png"),
+  footer: assetPath("/visuals/footer-watercolor.png"),
+  empty: assetPath("/visuals/empty-initiative.png"),
+  aiIcon: assetPath("/visuals/icon-ai.png"),
+  metricLightbulb: assetPath("/visuals/icon-metric-lightbulb.png"),
+  metricHeart: assetPath("/visuals/icon-metric-heart.png"),
+  metricTrophy: assetPath("/visuals/icon-metric-trophy.png"),
+  metricPeople: assetPath("/visuals/icon-metric-people.png"),
+  bannerCompetition: assetPath("/visuals/banner-competition.png"),
+  bannerGuideForm: assetPath("/visuals/banner-guide-form.png"),
 } as const;
 const fieldMeta: Record<Field, { color: string; bg: string; image: string }> = {
   "Công nghệ": {
     color: "var(--blue-700)",
     bg: "var(--blue-100)",
-    image: "/visuals/thumb-tech.png",
+    image: assetPath("/visuals/thumb-tech.png"),
   },
   "Quy trình": {
     color: "var(--green-600)",
     bg: "var(--green-100)",
-    image: "/visuals/thumb-process.png",
+    image: assetPath("/visuals/thumb-process.png"),
   },
   "An toàn": {
     color: "var(--gold-500)",
     bg: "var(--gold-100)",
-    image: "/visuals/thumb-safety.png",
+    image: assetPath("/visuals/thumb-safety.png"),
   },
   "Môi trường": {
     color: "var(--green-500)",
     bg: "var(--green-100)",
-    image: "/visuals/thumb-environment.png",
+    image: assetPath("/visuals/thumb-environment.png"),
   },
   "Khác": {
     color: "var(--cyan-500)",
     bg: "var(--cyan-100)",
-    image: "/visuals/thumb-other.png",
+    image: assetPath("/visuals/thumb-other.png"),
   },
 };
 const departments = [
@@ -179,21 +180,21 @@ const innovators = [
     donVi: "Ban Thăm dò - Khai thác Dầu khí",
     quote: "Sáng kiến tốt bắt đầu từ một bất tiện nhỏ được nhìn đủ kỹ.",
     count: 3,
-    image: "/visuals/honor-1.svg",
+    image: assetPath("/visuals/honor-1.svg"),
   },
   {
     ten: "Trần Hải Yến",
     donVi: "Ban Khoa học Công nghệ & Chuyển đổi số",
     quote: "Dữ liệu không thay con người, dữ liệu giúp chúng ta quyết định tự tin hơn.",
     count: 3,
-    image: "/visuals/honor-2.svg",
+    image: assetPath("/visuals/honor-2.svg"),
   },
   {
     ten: "Lê Thu Hương",
     donVi: "Văn phòng Tập đoàn",
     quote: "Đổi mới trong công đoàn là làm cho việc tốt trở nên dễ lặp lại.",
     count: 2,
-    image: "/visuals/honor-3.svg",
+    image: assetPath("/visuals/honor-3.svg"),
   },
 ];
 
@@ -1034,7 +1035,7 @@ function Navigation({
     <header className="top-nav fixed inset-x-0 top-0 z-40">
       <div className="app-container grid h-20 grid-cols-[minmax(230px,300px)_minmax(0,1fr)_auto] items-center gap-3 lg:h-24">
         <button className="focus-ring flex min-w-0 items-center gap-3 text-left" onClick={() => go("landing")}>
-          <img src="/logo-pvn.png" alt="Petrovietnam" className="h-10 w-auto object-contain" />
+          <img src={assetPath("/logo-pvn.png")} alt="Petrovietnam" className="h-10 w-auto object-contain" />
           <span className="min-w-0 leading-tight">
             <span className="block whitespace-nowrap text-[11px] font-black uppercase text-[var(--green-600)] sm:text-xs">
               Công đoàn Bộ máy QL&ĐH Petrovietnam
@@ -3984,7 +3985,7 @@ function SiteFooter() {
       <div className="site-footer-inner app-container">
         <div className="grid gap-8 md:grid-cols-2 xl:grid-cols-[1.18fr_1fr_1fr] xl:items-start">
           <div className="flex gap-4">
-            <img src="/logo-pvn.png" alt="Petrovietnam" className="mt-1 h-11 w-auto shrink-0 object-contain" />
+            <img src={assetPath("/logo-pvn.png")} alt="Petrovietnam" className="mt-1 h-11 w-auto shrink-0 object-contain" />
             <div>
               <p className="site-footer-kicker">Petrovietnam</p>
               <h2 className="mt-2 max-w-xl text-base font-black uppercase leading-6 text-[var(--navy-900)]">

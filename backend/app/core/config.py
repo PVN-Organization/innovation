@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     AZURE_AD_CLIENT_ID: str = ""
     AZURE_AD_TENANT_ID: str = ""
     AZURE_AD_CLIENT_SECRET: str = ""
+    # Prefer explicit URI behind reverse proxies (HAProxy / subpath).
+    AZURE_AD_REDIRECT_URI: str = ""
 
     # ── Security ──────────────────────────────────────────
     SECRET_KEY: str = "change-me-to-a-random-secret"
@@ -41,6 +43,7 @@ class Settings(BaseSettings):
     ]
     FRONTEND_URL: str = "http://localhost:10003"
     COOKIE_SECURE: bool = False
+    COOKIE_PATH: str = "/"
 
     # TEMP: allow anonymous initiative submission (disable before auth go-live)
     BYPASS_AUTH_TEMP: bool = True
